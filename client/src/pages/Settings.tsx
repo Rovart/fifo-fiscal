@@ -17,15 +17,15 @@ function FifoStart() {
   const recalculate = async () => {
     setBusy(true); setMessage('');
     try {
-      const result = await api<{ verified: boolean; excluded: number }>('/fifo/recalculate', { method: 'POST' });
-      setMessage(result.verified ? `FIFO actualizado · ${result.excluded === 1 ? '1 movimiento antiguo' : `${result.excluded} movimientos antiguos`} fuera del cálculo.` : 'No se ha podido comprobar un corte seguro. Se conserva el historial.');
+      const result = await api<{ verified: boolean }>('/fifo/recalculate', { method: 'POST' });
+      setMessage(result.verified ? 'FIFO actualizado. Tu historial se conserva completo.' : 'No se ha podido confirmar un inicio más reciente. Tu historial se conserva completo.');
       changed();
     } catch (e) { setMessage((e as Error).message); }
     finally { setBusy(false); }
   };
   return <div className="card fifo-recalculate" aria-busy={busy}>
     <button className="btn" aria-describedby="fifo-recalculate-help" disabled={busy} onClick={() => void recalculate()}><RefreshCw size={15} className={busy ? 'spin' : ''} />{busy ? 'Comprobando…' : 'Recalcular FIFO'}</button>
-    <p id="fifo-recalculate-help" className="small muted">Revisa los ciclos cerrados y conserva solo el historial que aún afecta al cálculo.</p>
+    <p id="fifo-recalculate-help" className="small muted">Detecta el inicio del FIFO actual y conserva todo tu historial.</p>
     {message && <div className="small fifo-recalculate-status" role="status">{message}</div>}
   </div>;
 }

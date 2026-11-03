@@ -73,7 +73,7 @@ export interface Operation {
   deleted?: boolean;
   simulated?: boolean;
   /** Solo durante el cálculo de una permuta parcialmente recortada. Nunca se guarda. */
-  fifoLeg?: 'swap_in' | 'swap_out' | 'cash_only';
+  fifoLeg?: 'swap_in' | 'swap_out' | 'cash_only' | 'inventory_reset';
   /** Evidencia utilizada para completar datos automáticamente, sin marcar una edición manual. */
   resolutions?: { code: 'isin' | 'dividend' | 'corporate_action' | 'fee'; at: string; source: string; detail: string }[];
 }
@@ -92,7 +92,7 @@ export interface Asset {
 }
 
 export interface Settings {
-  /** Recorta solo ciclos que reproducen posiciones, costes y ejercicios abiertos. */
+  /** Detecta el inicio del FIFO actual conservando todos los resultados anteriores. */
   fifoAutoStart?: boolean;
   /** Saldo total cero confirmado por el titular al cierre de un mes ya presentado.
    * Aporta el dato que un extracto de exchange no prueba sobre carteras externas. */
@@ -359,6 +359,8 @@ export interface PerformanceData {
 }
 
 export interface EngineResult {
+  /** Ajustes de inventario confirmados; no son ventas ni alteran el resultado anterior. */
+  inventoryResets?: { assetId: string; date: string; quantityBefore: string; costEurBefore: string; note: string }[];
   /** Consumos de lotes sin transmisión fiscal, como comisiones pagadas en cripto. */
   lotUses?: { opId: string; assetId: string; date: string; acqDates: string[] }[];
   disposals: Disposal[];
@@ -375,7 +377,7 @@ export interface EngineResult {
   /** Gastos en divisa todavía pendientes de un ingreso que los cubra. */
   fxShorts?: { currency: string; date: string; quantity: string; eur: string }[];
   unmatchedTransfers?: { assetId: string; quantity: string }[];
-  fifoAuto?: { verified: boolean; starts: Record<string, string>; excluded: number; externalAssets: string[] };
+  fifoAuto?: { verified: boolean; starts: Record<string, string>; previousOperations: number; externalAssets: string[] };
 }
 
 export interface FifoHistory {

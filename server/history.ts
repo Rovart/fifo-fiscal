@@ -1,6 +1,6 @@
 import { D, Decimal, ZERO, cents } from '../shared/decimal.ts';
 import type { PerformanceData } from '../shared/types.ts';
-import { effectiveFifoSettings, fifoOperations } from '../shared/fifo-start.ts';
+import { fifoOperations } from '../shared/fifo-start.ts';
 import { db, allOps, getSettings, rateAt } from './db.ts';
 import { nextMonth } from './engine/dates.ts';
 import { runEngine } from './engine/fifo.ts';
@@ -13,7 +13,7 @@ function monthlyEngine() {
   const assets = assetsMap();
   const ops = fifoOperations(withAssetMeta(allOps(), assets), getSettings());
   const res = runEngine({ ops, assets, settings: getSettings(), rateAt, today: today(), monthly: true });
-  return { ops: fifoOperations(ops, effectiveFifoSettings(getSettings(), res)), res };
+  return { ops, res };
 }
 
 const lastDay = (month: string) => new Date(Date.parse(`${nextMonth(month)}-01T00:00:00Z`) - 86400000).toISOString().slice(0, 10);

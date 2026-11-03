@@ -80,6 +80,7 @@ app.get('/api/operations', (c) => {
   const assets = assetsMap();
   const problem = new Map<string, string>();
   const calculated = new Map(calculationOps().map((o) => [o.id, o]));
+  const historical = new Map(fifoOperations(withAssetMeta(allOps(), assets), getSettings()).map((o) => [o.id, o]));
   for (const i of res.issues) if (i.opId && i.severity !== 'info') problem.set(i.opId, i.severity);
   let ops = allOps(q.flag === 'deleted').filter((o) => (q.flag === 'deleted' ? o.deleted : true));
   if (q.year) ops = ops.filter((o) => o.datetime.startsWith(q.year as string));
@@ -99,7 +100,8 @@ app.get('/api/operations', (c) => {
   ops.reverse();
   return c.json({
     total: ops.length,
-    items: withAssetMeta(ops.slice(offset, offset + limit), assets).map((o) => ({ ...o, _issue: problem.get(o.id) ?? null, _excluded: !calculated.has(o.id), _partial: !!calculated.get(o.id)?.fifoLeg })),
+    items: withAssetMeta(ops.slice(offset, offset + limit), assets).map((o) => ({ ...o, _issue: problem.get(o.id) ?? null, _excluded: !historical.has(o.id), _partial: !!historical.get(o.id)?.fifoLeg,
+      _previousCycle: !!res.fifoAuto?.verified && (!calculated.has(o.id) || calculated.get(o.id)?.fifoLeg === 'cash_only') })),
   });
 });
 

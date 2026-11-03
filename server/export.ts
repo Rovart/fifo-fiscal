@@ -1,8 +1,9 @@
 import ExcelJS from 'exceljs';
 import { D } from '../shared/decimal.ts';
 import { BROKER_LABEL, CLASS_LABEL, KIND_LABEL } from '../shared/types.ts';
+import { fifoOperations } from '../shared/fifo-start.ts';
 import { isNeutralFx } from './engine/report.ts';
-import { allOps } from './db.ts';
+import { allOps, getSettings } from './db.ts';
 import { assetsMap, calculationOps, engine, report, withAssetMeta } from './service.ts';
 
 const EUR = '#,##0.00 "€"';
@@ -136,10 +137,11 @@ export async function exportYear(year: number): Promise<Uint8Array> {
     { header: 'Importe EUR', key: 'ge', width: 13 }, { header: 'Comisión', key: 'fee', width: 10 }, { header: 'Otros gastos', key: 'other', width: 10 }, { header: 'Retención', key: 'wh', width: 10 }, { header: 'Total EUR', key: 't', width: 13 }, { header: 'Editada', key: 'e', width: 8 }, { header: 'Cálculo FIFO', key: 'fifo', width: 20 },
   ];
   const calculated = new Map(calculationOps().map((o) => [o.id, o]));
+  const historical = new Map(fifoOperations(withAssetMeta(allOps(), assetsMap()), getSettings()).map((o) => [o.id, o]));
   for (const o of withAssetMeta(allOps(), assetsMap()).filter((x) => x.datetime.startsWith(String(year)))) {
     opsSheet.addRow({
       d: o.datetime.replace('T', ' '), b: BROKER_LABEL[o.broker], k: KIND_LABEL[o.kind], n: o.assetName, id: o.assetId, q: num(o.quantity), p: num(o.unitPrice), c: o.currency, gl: num(o.grossLocal), fx: num(o.fxRate),
-      ge: num(o.grossEur), fee: num(o.feeEur), other: num(o.otherCostsEur), wh: num(o.withholdingEur), t: num(o.totalEur), e: o.edited ? 'Sí' : '', fifo: !calculated.has(o.id) ? 'Fuera del FIFO' : calculated.get(o.id)?.fifoLeg ? 'Recorte parcial' : 'Incluida',
+      ge: num(o.grossEur), fee: num(o.feeEur), other: num(o.otherCostsEur), wh: num(o.withholdingEur), t: num(o.totalEur), e: o.edited ? 'Sí' : '', fifo: !historical.has(o.id) ? 'Fuera del FIFO' : historical.get(o.id)?.fifoLeg ? 'Recorte parcial' : !calculated.has(o.id) || calculated.get(o.id)?.fifoLeg === 'cash_only' ? 'Ciclo anterior' : 'Incluida',
     });
   }
   style(opsSheet, [11, 12, 13, 14, 15]);

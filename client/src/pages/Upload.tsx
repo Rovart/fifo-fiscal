@@ -154,7 +154,7 @@ export function Upload() {
       </div>
       {(error && !removal || historyError) && <Callout tone="error">{historyError || error}</Callout>}
 
-      {!!state.counts.operations && fifo && <Disclosure card title={<span>FIFO {fifo.cryptoFrom ? 'cripto ' : ''}{fifo.cryptoFrom || fifo.from ? <>desde <strong>{dateShort(fifo.cryptoFrom ?? fifo.from)}</strong></> : 'cerrado'}{!fifo.complete && !fifo.cryptoFrom && <span className="small muted"> · Historial por completar</span>}</span>}>
+      {!!state.counts.operations && fifo && <Disclosure card title={<span>FIFO actual {fifo.cryptoFrom ? 'cripto ' : ''}{fifo.cryptoFrom || fifo.from ? <>desde <strong>{dateShort(fifo.cryptoFrom ?? fifo.from)}</strong></> : 'cerrado'}{!fifo.complete && !fifo.cryptoFrom && <span className="small muted"> · Historial por completar</span>}</span>}>
           {fifo.cryptoFrom && fifo.from && fifo.from < fifo.cryptoFrom && <p className="small muted">Otros activos necesitan historial desde {dateShort(fifo.from)}.</p>}
           <p className="small muted">{!fifo.complete ? 'Faltan datos para confirmar un inicio más reciente.' : fifo.from ? 'Para continuar en próximos años, necesitas los movimientos desde esta fecha. Lo anterior ya no sostiene posiciones ni pérdidas aplazadas.' : 'No quedan posiciones ni pérdidas aplazadas. Puedes empezar con las próximas operaciones.'} Conserva también los movimientos del año que declares y tus pérdidas pendientes de compensar.</p>
           {state.settings.fifoAutoStart && Object.entries(state.settings.fifoConfirmedClosures ?? {}).map(([id, c]) => <p className="small muted" key={id} title={c.note}>{id} · Saldo cero confirmado por el titular en {monthLabel(c.month)}.</p>)}

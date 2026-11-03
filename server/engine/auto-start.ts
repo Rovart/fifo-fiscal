@@ -2,23 +2,14 @@ import { D } from '../../shared/decimal.ts';
 import { fifoOperations } from '../../shared/fifo-start.ts';
 import type { EngineResult, Settings } from '../../shared/types.ts';
 import { runEngine, type EngineInput } from './fifo.ts';
-import { nextMonth } from './dates.ts';
 import { buildYearReport } from './report.ts';
 
-/** Solo acepta un recorte que deja iguales la cartera, el coste, las pérdidas
- * pendientes y todos los resultados de los ejercicios sin presentar. */
+/** Verifica el inicio del FIFO actual sin retirar ningún resultado histórico. */
 export function runAutomaticFifo(input: EngineInput): EngineResult {
   const settings = { ...input.settings, fifoAutoStart: false };
   const original = fifoOperations(input.ops, settings).filter((o) => !o.deleted);
-  // Un saldo total cero declarado es un dato de inventario, no una venta ni
-  // una fecha de recompra impuesta. El siguiente ciclo se deduce de sus lotes.
-  const confirmed = Object.fromEntries(Object.entries(settings.fifoConfirmedClosures ?? {})
-    .filter(([id, c]) => /^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) && Number(c.month.slice(0, 4)) <= (settings.lastFiledYear ?? 0)
-      && original.some((o) => o.assetId === id && o.assetClass === 'crypto'))
-    .map(([id, c]) => [id, `${nextMonth(c.month)}-01`]));
-  const baselineSettings = { ...settings, fifoStartDates: { ...settings.fifoStartDates, ...confirmed } };
-  const ops = fifoOperations(original, baselineSettings);
-  const baseline = runEngine({ ...input, ops, settings: baselineSettings });
+  const ops = original;
+  const baseline = runEngine({ ...input, ops, settings });
   const firstYear = Number(ops.map((o) => o.datetime.slice(0, 4)).sort()[0] ?? input.today.slice(0, 4));
   const year = settings.lastFiledYear ? settings.lastFiledYear + 1 : firstYear;
   const preserveFrom = `${year}-01-01`;
@@ -61,7 +52,7 @@ export function runAutomaticFifo(input: EngineInput): EngineResult {
   const lastYear = Math.max(Number(input.today.slice(0, 4)), ...baseline.years);
   const expected = signature(baseline, preserveFrom, settings, lastYear);
   const recalculate = () => {
-    const effective = fifoOperations(original, { ...settings, fifoStartDates: { ...settings.fifoStartDates, ...confirmed, ...Object.fromEntries(dates) } });
+    const effective = fifoOperations(original, { ...settings, fifoStartDates: { ...settings.fifoStartDates, ...Object.fromEntries(dates) } });
     const result = runEngine({ ...input, ops: effective, settings });
     return { effective, result, verified: expected === signature(result, preserveFrom, settings, lastYear) };
   };
@@ -78,15 +69,11 @@ export function runAutomaticFifo(input: EngineInput): EngineResult {
     for (const o of ops) if (o.assetClass !== 'crypto') need(o.assetId, o.datetime);
     checked = recalculate();
   }
-  if (!checked.verified && Object.keys(confirmed).length) {
-    dates.clear();
-    for (const [id, date] of Object.entries(confirmed)) dates.set(id, date);
-    checked = { effective: ops, result: baseline, verified: true };
-  }
-  const { verified, result: replay, effective } = checked;
+  const { verified, effective } = checked;
   return {
-    ...(verified ? replay : baseline),
-    fifoAuto: { verified, starts: Object.fromEntries(dates), excluded: verified ? original.length - effective.filter((o) => o.fifoLeg !== 'cash_only').length : 0, externalAssets },
+    ...baseline,
+    issues: baseline.issues.map((i) => verified && i.assetId && i.date && i.date < (dates.get(i.assetId) ?? '') ? { ...i, settled: true, affectsFuture: false } : i),
+    fifoAuto: { verified, starts: Object.fromEntries(dates), previousOperations: verified ? original.length - effective.filter((o) => o.fifoLeg !== 'cash_only').length : 0, externalAssets },
   };
 }
 

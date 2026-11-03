@@ -67,7 +67,7 @@ const ORDER_RANK: Partial<Record<OpKind, number>> = {
 export const sortOps = (ops: Operation[]): Operation[] =>
   [...ops].sort((a, b) => {
     if (a.datetime !== b.datetime) return a.datetime < b.datetime ? -1 : 1;
-    const r = (ORDER_RANK[a.kind] ?? 5) - (ORDER_RANK[b.kind] ?? 5);
+    const r = (a.fifoLeg === 'inventory_reset' ? 100 : ORDER_RANK[a.kind] ?? 5) - (b.fifoLeg === 'inventory_reset' ? 100 : ORDER_RANK[b.kind] ?? 5);
     return r !== 0 ? r : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
@@ -97,6 +97,7 @@ export function runEngine(input: EngineInput): EngineResult {
   const incomes: Income[] = [];
   const fees: FeeEntry[] = [];
   const lotUses: NonNullable<EngineResult['lotUses']> = [];
+  const inventoryResets: NonNullable<EngineResult['inventoryResets']> = [];
   const issues: Issue[] = [];
   const brokerQty = new Map<string, Map<string, Decimal>>();
   const brokerOfOp = new Map(input.ops.map((o) => [o.id, o.broker]));
@@ -433,7 +434,14 @@ export function runEngine(input: EngineInput): EngineResult {
     orderRates.set(raw.orderRef, e);
   }
 
-  for (const raw of sortOps(input.ops.filter((o) => !o.deleted))) {
+  const resets: Operation[] = Object.entries(settings.fifoConfirmedClosures ?? {}).flatMap(([id, c]) => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || Number(c.month.slice(0, 4)) > (settings.lastFiledYear ?? 0)) return [];
+    const datetime = new Date(Date.parse(`${nextMonth(c.month)}-01T00:00:00Z`) - 1000).toISOString().slice(0, 19);
+    if (dateOf(datetime) > today) return [];
+    const ref = input.ops.find((o) => !o.deleted && o.assetId === id && o.assetClass === 'crypto' && o.datetime <= datetime);
+    return ref ? [{ ...ref, id: `RESET:${id}:${c.month}`, kind: 'transfer_out' as const, datetime, fifoLeg: 'inventory_reset' as const, note: c.note, reviewReasons: [], original: null }] : [];
+  });
+  for (const raw of sortOps([...input.ops.filter((o) => !o.deleted), ...resets])) {
     const op = resolveOp(raw, settings, rateAt);
     const y = yearOf(op.datetime);
     if (currentYear !== null && y !== currentYear) {
@@ -450,6 +458,17 @@ export function runEngine(input: EngineInput): EngineResult {
     const klass = op.assetClass as DisposalClass;
     if (op.assetId) names.set(op.assetId, { name: op.assetName || op.assetId, klass });
     if (settings.fxTracking && op.currency !== 'EUR' && op.currency) names.set(fxAsset(op.currency), { name: op.currency, klass: 'fx' });
+
+    if (op.fifoLeg === 'inventory_reset') {
+      const b = book(op.assetId);
+      inventoryResets.push({ assetId: op.assetId, date: dateOf(op.datetime), quantityBefore: holdings(op.assetId).toFixed(), costEurBefore: b.lots.reduce((sum, lot) => sum.plus(lot.cost), ZERO).toFixed(), note: op.note ?? '' });
+      b.lots = []; b.pending = []; b.purchases = []; b.history = [];
+      brokerQty.delete(op.assetId);
+      outside.delete(op.assetId);
+      for (const issue of issues) if (issue.assetId === op.assetId) { issue.settled = true; issue.affectsFuture = false; }
+      noteHistory(op.assetId, dateOf(op.datetime));
+      continue;
+    }
 
     if (op.reviewReasons?.length && !op.simulated) {
       for (const reason of op.reviewReasons) {
@@ -770,13 +789,13 @@ export function runEngine(input: EngineInput): EngineResult {
   }
 
   // Si todo lo llegado de fuera ya se vendió, los lotes siguientes quedan igual que si constara su coste.
-  for (const i of soldFromOutside) i.settled = (outside.get(i.assetId as string) ?? ZERO).lt('0.00001');
+  for (const i of soldFromOutside) i.settled ||= (outside.get(i.assetId as string) ?? ZERO).lt('0.00001');
   if (input.monthly && currentMonth) {
     for (let m = currentMonth; m <= input.today.slice(0, 7); m = nextMonth(m)) monthly[m] = positions;
   }
   const fxShorts = [...shorts].flatMap(([currency, items]) => items.filter((s) => s.qty.gt(0)).map((s) => ({ currency, date: s.date, quantity: s.qty.toFixed(), eur: s.eur.toFixed() })));
   const unmatchedTransfers = [...outside].filter(([, q]) => q.gt(0)).map(([assetId, q]) => ({ assetId, quantity: q.toFixed() }));
-  return { disposals, tranches: tranchesOut, incomes, fees, openLots, positions, snapshots, issues, years: [...years].sort(), fxShorts, unmatchedTransfers, lotUses, ...(input.monthly ? { monthly } : {}) };
+  return { disposals, tranches: tranchesOut, incomes, fees, openLots, positions, snapshots, issues, years: [...years].sort(), fxShorts, unmatchedTransfers, lotUses, inventoryResets, ...(input.monthly ? { monthly } : {}) };
 }
 
 export type { Broker };

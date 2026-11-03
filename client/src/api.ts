@@ -36,4 +36,4 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   return data as T;
 }
 
-export type OpRow = Operation & { _issue?: string | null; _excluded?: boolean; _partial?: boolean };
+export type OpRow = Operation & { _issue?: string | null; _excluded?: boolean; _partial?: boolean; _previousCycle?: boolean };

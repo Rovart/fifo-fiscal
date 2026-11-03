@@ -133,6 +133,33 @@ describe('Revisión automática', () => {
     expect(db.db.prepare('SELECT asset_id FROM price_history WHERE month = ?').get('2026-01')).toMatchObject({ asset_id: 'LU1681038243' });
     db.db.exec('DELETE FROM price_history');
   });
+  it('borrar y reimportar Revolut reproduce importes, retenciones y Renta después de resolver los datos', async () => {
+    await db.withProfile(db.createProfile('Reimportación').id, async () => {
+      const csv = [
+        'Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate',
+        '2025-01-02T14:00:00.000Z,AAPL,BUY - MARKET,20,$10.00,$200.00,USD,1.25',
+        '2026-03-13T14:00:00.000Z,AAPL,DIVIDEND,,,$8.50,USD,1.25',
+        '2026-04-01T14:00:00.000Z,AAPL,SELL - MARKET,20,$12.00,$240.00,USD,1.25',
+      ].join('\n');
+      const reference = async () => ({ securities: [{ symbol: 'AAPL', isin: 'US0378331005', name: 'Apple', source }], dividends: [event], splits: [] });
+      db.saveSettings({ ...db.getSettings(), lastFiledYear: 2025, fifoAutoStart: true });
+      const first = svc.commitImport('Revolut.csv', csv);
+      await resolveWarnings(reference);
+      const before = svc.report(2026);
+      const amounts = () => db.allOps().map((o) => [o.sourceKey, o.assetId, o.kind, o.quantity, o.grossLocal, o.grossEur, o.withholdingEur, o.totalEur, o.reviewReasons]);
+      const values = amounts();
+      expect(svc.undoImport(first.importId)).toBe(3);
+      expect(db.allOps()).toEqual([]);
+      svc.commitImport('Revolut.csv', csv);
+      await resolveWarnings(reference);
+      expect(amounts()).toEqual(values);
+      const after = svc.report(2026);
+      expect(after.sections).toEqual(before.sections);
+      expect(after.rcm).toEqual(before.rcm);
+      expect(after.doubleTaxDeduction).toBe(before.doubleTaxDeduction);
+      expect(after.savings).toEqual(before.savings);
+    });
+  });
 });
 
 it('los avisos antiguos de ingresos y los informativos no reaparecen al vender ese activo años después', () => {

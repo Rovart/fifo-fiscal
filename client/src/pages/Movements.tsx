@@ -94,7 +94,7 @@ export function Movements() {
                     <div className={`avatar ${o._issue === 'error' ? 'loss' : o._issue === 'warning' ? 'warn' : ''}`}><Icon size={17} /></div>
                     <div className="main-col">
                       <div className="title">{niceName(o.assetName || o.assetId)}{o.counterName && o.kind !== 'fx' ? ` → ${niceName(o.counterName)}` : ''}</div>
-                      <div className="sub">{KIND_LABEL[o.kind]} · {BROKER_LABEL[o.broker]} · {dayMonth(o.datetime)}{o.edited ? ' · editado' : ''}{o._excluded ? ' · Fuera del FIFO' : o._partial ? ' · Recorte parcial' : ''}</div>
+                      <div className="sub">{KIND_LABEL[o.kind]} · {BROKER_LABEL[o.broker]} · {dayMonth(o.datetime)}{o.edited ? ' · editado' : ''}{o._excluded ? ' · Fuera del FIFO' : o._partial ? ' · Recorte parcial' : o._previousCycle ? ' · Ciclo anterior' : ''}</div>
                     </div>
                     {d && <div className="mid">{d}</div>}
                     <div className="end">

@@ -158,6 +158,35 @@ describe('Cuentas independientes', () => {
     expect(portfolio.lots).toHaveLength(1);
     expect((await (await request('/api/portfolio')).json()).balanceDifferences).toEqual([]);
   });
+  it('recalcular conserva resultados, dividendos, gráficas y exportaciones de ciclos anteriores', async () => {
+    const profile = db.createProfile('Historial completo');
+    const history = [
+      'Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate',
+      '2024-01-02T14:00:00.000Z,AAPL,BUY - MARKET,10,EUR 10.00,EUR 100.00,EUR,1',
+      '2024-01-31T14:00:00.000Z,AAPL,DIVIDEND,,,EUR 1.00,EUR,1',
+      '2024-02-02T14:00:00.000Z,AAPL,SELL - MARKET,10,EUR 12.00,EUR 120.00,EUR,1',
+      '2025-04-07T14:00:00.000Z,AAPL,BUY - MARKET,5,EUR 20.00,EUR 100.00,EUR,1',
+    ].join('\n');
+    db.withProfile(profile.id, () => {
+      svc.commitImport('Revolut.csv', history);
+      db.saveSettings({ ...DEFAULT_SETTINGS, lastFiledYear: 2025 });
+    });
+    const before = await (await request('/api/report/2024', profile.id)).json();
+    expect((await request('/api/fifo/recalculate', profile.id, 'POST')).status).toBe(200);
+    const after = await (await request('/api/report/2024', profile.id)).json();
+    expect(after.sections).toEqual(before.sections);
+    expect(after.rcm).toEqual(before.rcm);
+    expect(after.savings).toEqual(before.savings);
+    expect((await (await request('/api/disposals?year=2024', profile.id)).json()).items).toHaveLength(1);
+    const movements = (await (await request('/api/operations?year=2024', profile.id)).json()).items;
+    expect(movements).toHaveLength(3);
+    expect(movements.every((o: { _excluded: boolean; _previousCycle: boolean }) => !o._excluded && o._previousCycle)).toBe(true);
+    expect((await (await request('/api/performance', profile.id)).json()).years.map((y: { year: number }) => y.year)).toContain(2024);
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await (await request('/api/export/2024', profile.id)).arrayBuffer());
+    expect(workbook.getWorksheet('Transmisiones FIFO')!.rowCount).toBeGreaterThan(1);
+  });
 });
 
 describe('Documentos de un mismo exchange', () => {
