@@ -1,0 +1,11 @@
+Fecha,Hora,Fecha valor,Producto,ISIN,Descripción,Tipo,Variación,,Saldo,,ID Orden
+16-05-2025,07:12,15-05-2025,,,Ingreso Cambio de Divisa,,EUR,"8,20",EUR,"108,20",
+16-05-2025,07:12,15-05-2025,,,Retirada Cambio de Divisa,"1,1200",USD,"-9,18",USD,"0,00",
+15-05-2025,08:00,15-05-2025,APPLE INC. - COMMON ST,US0378331005,Dividendo,,USD,"10,80",USD,"10,80",
+15-05-2025,08:00,15-05-2025,APPLE INC. - COMMON ST,US0378331005,Retención del dividendo,,USD,"-1,62",USD,"9,18",
+02-01-2025,10:00,31-12-2024,,,Comisión de conectividad con el mercado 2024 (Nasdaq - NDQ),,EUR,"-2,50",EUR,"100,00",
+03-02-2025,10:00,03-02-2025,,,Interés,,EUR,"0,35",EUR,"102,50",
+10-03-2025,15:31,10-03-2025,APPLE INC. - COMMON ST,US0378331005,Costes de transacción y/o externos de DEGIRO,,EUR,"-1,00",EUR,"102,15",aaaa-1111
+05-02-2024,09:15,05-02-2024,BANCO SANTANDER SA,ES0113900J37,Impuesto Transacciones Financieras,,EUR,"-3,00",EUR,"90,00",eeee-5555
+01-03-2025,12:00,01-03-2025,,,flatex Deposit,,EUR,"500,00",EUR,"600,00",
+20-03-2025,12:00,20-03-2025,,,Comisión desconocida XYZ,,EUR,"-1,00",EUR,"600,00",

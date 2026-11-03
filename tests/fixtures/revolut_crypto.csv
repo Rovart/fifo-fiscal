@@ -1,0 +1,8 @@
+Symbol,Type,Quantity,Price,Value,Fees,Date
+BTC,Buy,0.01,€40000.00,€400.00,€6.00,"Jan 5, 2024, 10:00:00 AM"
+BTC,Sell,0.004,€50000.00,€200.00,€3.00,"Mar 5, 2024, 3:30:00 PM"
+ETH,Staking reward,0.001,€3000.00,€3.00,,"Apr 1, 2024, 2:00:00 AM"
+XLM,Learn reward,10,€0.10,€1.00,,"Apr 2, 2024, 2:00:00 AM"
+ETH,Send,0.5,,,,"Apr 3, 2024, 2:00:00 AM"
+SOL,Receive,2,,,,"Apr 4, 2024, 2:00:00 AM"
+ETH,Stake,0.1,,,,"Apr 5, 2024, 2:00:00 AM"

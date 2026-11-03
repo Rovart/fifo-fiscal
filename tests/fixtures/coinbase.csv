@@ -1,0 +1,18 @@
+You can use this transaction report to inform your likely tax obligations. For US customers, Sells, Converts, Rewards Income, Coinbase Earn transactions, and Donations are taxable events.
+
+Transactions
+User,Ejemplo,00000000-0000-0000-0000-000000000000
+
+ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+a1,2024-01-15 10:30:45 UTC,Buy,BTC,0.01,EUR,€40000.00,€400.00,€405.00,€5.00,Bought 0.01 BTC for €405.00 EUR
+a2,2024-03-01T12:00:00Z,Advanced Trade Buy,ETH,0.5,EUR,€3000.00,€1500.00,€1503.00,€3.00,Bought 0.5 ETH for €1503.00 EUR on ETH-EUR at €3000.00/ETH
+a3,2024-04-01 09:00:00 UTC,Convert,BTC,-0.002,EUR,€60000.00,€118.00,€120.00,€2.00,Converted 0.002 BTC to 0.04 ETH
+a4,2024-05-01 09:00:00 UTC,Sell,BTC,-0.005,EUR,€60000.00,€300.00,€297.00,€3.00,Sold 0.005 BTC for €297.00 EUR
+a5,2024-06-01 09:00:00 UTC,Rewards Income,ETH,0.001,EUR,€3200.00,€3.20,€3.20,€0.00,
+a6,2024-06-02 09:00:00 UTC,Learning Reward,XLM,10,EUR,€0.10,€1.00,€1.00,€0.00,
+a7,2024-06-03 09:00:00 UTC,Send,ETH,-0.1,EUR,€3200.00,€320.00,€320.00,€0.00,To 0xabc
+a8,2024-06-04 09:00:00 UTC,Receive,SOL,2,EUR,€130.00,€260.00,€260.00,€0.00,From 0xdef
+a9,2024-06-05 09:00:00 UTC,Deposit,EUR,1000,EUR,€1.00,€1000.00,€1000.00,€0.00,
+a10,2024-06-06 09:00:00 UTC,Retail Staking Transfer,ETH,-0.1,EUR,€3200.00,€320.00,€320.00,€0.00,
+a11,2024-06-07 09:00:00 UTC,Advanced Trade Buy,SOL,1,EUR,€120.00,€120.00,€120.50,€0.50,Bought 1 SOL for 130.5 USDC on SOL-USDC at 130/SOL
+a12,2024-06-08 09:00:00 UTC,Mystery Thing,ETH,1,EUR,€1.00,€1.00,€1.00,€0.00,

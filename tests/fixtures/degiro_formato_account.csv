@@ -1,0 +1,25 @@
+Fecha,Hora,Fecha valor,Producto,ISIN,Descripción,Tipo,Variación,,Saldo,,ID Orden
+21-09-2023,15:30,21-09-2023,EJEMPLO USA INC,US0000000001,Ingreso Cambio de Divisa,"1,1964",USD,"600,00",USD,"0,00",aaaa-2
+21-09-2023,15:30,21-09-2023,EJEMPLO USA INC,US0000000001,Retirada Cambio de Divisa,,EUR,"-501,50",EUR,"100,00",aaaa-2
+21-09-2023,15:30,21-09-2023,EJEMPLO USA INC,US0000000001,"Compra 4 Ejemplo USA Inc@150,00 USD (US0000000001)",,USD,"-600,00",USD,"-600,00",aaaa-2
+16-12-2022,06:31,15-12-2022,,,Ingreso Cambio de Divisa,,EUR,"0,34",EUR,"50,00",
+16-12-2022,06:31,15-12-2022,,,Retirada Cambio de Divisa,"1,1765",USD,"-0,40",USD,"0,00",
+15-12-2022,14:01,15-12-2022,EJEMPLO SPACE INC CLASS A,US0000000003,"AJUSTE POR SPLIT: 100 Ejemplo Space Inc Class A @ 10,0000 USD (US0000000003)",,USD,"-1000,00",USD,"0,40",
+15-12-2022,14:01,15-12-2022,EJEMPLO SPACE INC CLASS A,US0000000002,"AJUSTE POR SPLIT: 2.000 Ejemplo Space Inc Class A @ 0,5002 USD (US0000000002)",,USD,"1000,40",USD,"1000,40",
+01-10-2022,09:00,01-10-2022,,,Ingresos por préstamo de valores - Septiembre,,EUR,"1,25",EUR,"70,00",
+01-09-2022,09:00,01-09-2022,,,Interés,,USD,"-3,40",USD,"-500,00",
+08-07-2022,07:20,08-07-2022,,,"Transferir desde su Cuenta de Efectivo en flatexDEGIRO",,,,EUR,"1000,00",
+,,,,,"Bank: 5,00 EUR",,,,,,
+08-07-2022,07:00,11-07-2022,EUR/USD,EURUSD......,Retirada Cambio de Divisa,"1,1000",USD,"-1650,00",USD,"0,00",bbbb-1
+08-07-2022,07:00,11-07-2022,EUR/USD,EURUSD......,"LIQUIDACIÓN TRANSACCIÓN DE DIVISA: Venta 1.500 EUR/USD@1,10 USD (EURUSD......)",,USD,"1650,00",USD,"1650,00",bbbb-1
+08-07-2022,06:31,07-07-2022,,,Retirada Cambio de Divisa,,EUR,"-5,00",EUR,"1000,00",
+08-07-2022,06:31,07-07-2022,,,Ingreso Cambio de Divisa,"1,1000",USD,"5,50",USD,"0,00",
+07-07-2022,23:02,07-07-2022,EUR/USD,EURUSD......,Costes de transacción y/o externos de DEGIRO,,EUR,"-10,00",EUR,"1005,00",
+07-07-2022,23:02,07-07-2022,EUR/USD,EURUSD......,Ingreso Cambio de Divisa,"1,1000",USD,"3300,00",USD,"-5,50",
+07-07-2022,23:02,07-07-2022,EUR/USD,EURUSD......,Retirada Cambio de Divisa,,EUR,"-3000,00",EUR,"1015,00",
+07-07-2022,22:59,07-07-2022,EUR/USD,EURUSD......,Costes de transacción y/o externos de DEGIRO,,EUR,"-10,00",EUR,"4015,00",bbbb-1
+07-07-2022,22:59,07-07-2022,EUR/USD,EURUSD......,Costes de transacción y/o externos de DEGIRO,,USD,"-4,50",USD,"-3305,50",bbbb-1
+07-07-2022,22:59,07-07-2022,EUR/USD,EURUSD......,Ingreso Cambio de Divisa,,EUR,"1500,00",EUR,"4025,00",bbbb-1
+07-07-2022,22:59,07-07-2022,EUR/USD,EURUSD......,"Compra 1.500 EUR/USD@1,10 USD (EURUSD......)",,USD,"-1650,00",USD,"-3301,00",bbbb-1
+02-02-2021,10:00,31-12-2023,,,Comisión de conectividad con el mercado 2020 (Tradegate,,EUR,"-2,50",EUR,"100,00",
+,,,,,AG - TDG),,,,,,

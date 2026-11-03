@@ -1,0 +1,13 @@
+node_modules/
+dist/
+# Datos fiscales personales: nunca al repositorio
+data/
+*.db
+*.db-*
+# Extractos y copias sueltas en la raíz
+/*.csv
+/*.xlsx
+/*.pdf
+.env*
+# Ajustes locales del editor
+.claude/
