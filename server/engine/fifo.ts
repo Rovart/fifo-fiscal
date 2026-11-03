@@ -302,7 +302,9 @@ export function runEngine(input: EngineInput): EngineResult {
   }): Disposal => {
     const date = dateOf(p.op.datetime);
     const released: Tranche[] = [];
-    const { used, shortfall } = consume(p.assetId, p.qty, released, date);
+    const { used, shortfall: missing } = consume(p.assetId, p.qty, released, date);
+    // Una diferencia por debajo de la octava cifra decimal es redondeo del exchange, no una compra que falte.
+    const shortfall = missing.lt('0.00000001') ? ZERO : missing;
     const unit = p.qty.isZero() ? ZERO : p.proceeds.div(p.qty);
     const id = `D${++seq}`;
     const matches: Match[] = [];

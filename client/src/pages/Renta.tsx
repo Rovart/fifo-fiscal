@@ -284,15 +284,21 @@ export function Renta() {
 }
 
 function YearEnd({ rep, year }: { rep: YearReport; year: number }) {
+  // Solo cuenta la parte depositada en esos brókers: un resto en el exchange no arrastra
+  // lo que está en una cartera propia, que no va al 721.
   const cost = (brokers: string[], classes: string[]) => rep.yearEnd
-    .filter((p) => classes.includes(p.class) && Object.keys(p.byBroker).some((b) => brokers.includes(b)))
-    .reduce((s, p) => s.plus(D(p.costEur)), D(0));
+    .filter((p) => classes.includes(p.class) && D(p.quantity).gt(0))
+    .reduce((s, p) => {
+      const there = Object.entries(p.byBroker).filter(([b, q]) => brokers.includes(b) && D(q).gt(0)).reduce((t, [, q]) => t.plus(D(q)), D(0));
+      return s.plus(D(p.costEur).times(there.gt(p.quantity) ? 1 : there.div(D(p.quantity))));
+    }, D(0));
   const secCost = cost(['degiro', 'trade_republic', 'revolut'], ['stock', 'etf', 'fund', 'bond']);
-  const cryptoCost = cost(['kraken', 'trade_republic', 'revolut', 'coinbase', 'cointracking'], ['crypto']);
+  const cryptoCost = cost(['kraken', 'trade_republic', 'revolut', 'coinbase'], ['crypto']);
   const high = secCost.gt(50000) || cryptoCost.gt(50000);
+  const forms = [secCost.gt(50000) && '720', cryptoCost.gt(50000) && '721'].filter(Boolean).join(' y ');
   return (
-    <Disclosure card flush title={<span className="inline">Lo que tenías el 31 de diciembre de {year} <Help text={HELP.posicion} /></span>} meta={high ? <span className="tag warn">Revisa 720 y 721</span> : undefined}>
-      {high && <div style={{ padding: '0 22px 12px' }}><Callout tone="warn">Te costó más de 50.000 € en el extranjero. Comprueba si debes presentar el modelo {secCost.gt(50000) ? '720' : ''}{secCost.gt(50000) && cryptoCost.gt(50000) ? ' y el ' : ''}{cryptoCost.gt(50000) ? '721' : ''}.</Callout></div>}
+    <Disclosure card flush title={<span className="inline">Lo que tenías el 31 de diciembre de {year} <Help text={HELP.posicion} /></span>} meta={high ? <span className="tag warn">Revisa {forms}</span> : undefined}>
+      {high && <div style={{ padding: '0 22px 12px' }}><Callout tone="warn">Te costó más de 50.000 € en el extranjero. Comprueba si debes presentar el modelo {forms}.</Callout></div>}
       <div className="list">
         {rep.yearEnd.map((p) => (
           <div className="item" key={p.assetId}>

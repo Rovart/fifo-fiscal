@@ -218,3 +218,14 @@ describe('Ventas sin compra previa con el criterio antiguo de CoinTracking', () 
     expect(res.issues.filter((i) => i.code === 'missing_lots')).toHaveLength(1);
   });
 });
+
+describe('Redondeos de exchange', () => {
+  it('vender una fracción ínfima de más no se marca como compra que falta', () => {
+    const eth = { assetClass: 'crypto' as const, broker: 'kraken' as const, assetId: 'ETH', assetName: 'Ethereum' };
+    const res = run([trade('buy', '2025-04-07', '1', '1000', eth), trade('sell', '2025-05-09', '1.0000000006', '1200', eth)], settings, () => '1', '2026-11-03');
+    expect(res.disposals[0]).toMatchObject({ shortfall: '0', costEur: '1000' });
+    expect(res.issues.filter((i) => i.code === 'missing_lots')).toEqual([]);
+    const real = run([trade('buy', '2025-04-07', '1', '1000', eth), trade('sell', '2025-05-09', '1.00001', '1200', eth)], settings, () => '1', '2026-11-03');
+    expect(real.issues.filter((i) => i.code === 'missing_lots')).toHaveLength(1);
+  });
+});
