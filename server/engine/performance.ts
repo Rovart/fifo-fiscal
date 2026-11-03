@@ -1,5 +1,5 @@
 import { D, Decimal, ZERO, cents } from '../../shared/decimal.ts';
-import type { DisposalClass, EngineResult, Operation, PerformanceAsset, PerformanceData, PerformanceYear, Position } from '../../shared/types.ts';
+import { INCOME_GROUP, type DisposalClass, type EngineResult, type IncomeGroup, type Operation, type PerformanceAsset, type PerformanceData, type PerformanceYear, type Position } from '../../shared/types.ts';
 import { prevMonth } from './dates.ts';
 
 export interface PriceLookup {
@@ -71,6 +71,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
 
   for (const y of allYears) {
     let realized = ZERO, unknown = ZERO, income = ZERO, fees = ZERO, value = ZERO, cost = ZERO;
+    const byType: Record<IncomeGroup, Decimal> = { dividends: ZERO, interest: ZERO, staking: ZERO, rewards: ZERO, other: ZERO };
     const start = `${y - 1}-12-31`;
     const end = y === thisYear ? today : `${y}-12-31`;
     const span = Math.max(1, dayNumber(end) - dayNumber(start));
@@ -97,6 +98,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
     for (const i of res.incomes) {
       if (i.year !== y) continue;
       income = income.plus(D(i.grossEur));
+      byType[INCOME_GROUP[i.type]] = byType[INCOME_GROUP[i.type]].plus(D(i.grossEur));
       fees = fees.plus(D(i.feeEur));
       note(i.assetId, i.assetName, 'other');
       const t = tally(i.assetId, y);
@@ -127,7 +129,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
     totalResult = totalResult.plus(result);
 
     years.push({
-      year: y, realizedEur: cents(realized), incomeEur: cents(income), feesEur: cents(fees), unrealizedEndEur: cents(unrealizedEnd), unrealizedChangeEur: cents(change),
+      year: y, realizedEur: cents(realized), incomeEur: cents(income), incomeByType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, cents(v)])) as Record<IncomeGroup, string>, feesEur: cents(fees), unrealizedEndEur: cents(unrealizedEnd), unrealizedChangeEur: cents(change),
       resultEur: cents(result), returnPct: returnPct ? returnPct.toDecimalPlaces(2).toFixed(2) : null, valueEndEur: cents(value), costEndEur: cents(cost),
       unknownCostProceedsEur: cents(unknown), taxEur: null,
     });

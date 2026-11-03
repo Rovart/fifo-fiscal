@@ -312,12 +312,19 @@ export interface SalesSimulation {
   extraLossEur: string;
 }
 
+export type IncomeGroup = 'dividends' | 'interest' | 'staking' | 'rewards' | 'other';
+export const INCOME_GROUP: Record<Income['type'], IncomeGroup> = {
+  dividend: 'dividends', interest: 'interest', staking: 'staking', reward: 'rewards', capital_excess: 'other', bond: 'other',
+};
+
 export interface PerformanceYear {
   year: number;
   /** Ganancias y pérdidas de lo vendido, también las aplazadas: es lo que pasó, no lo que tributa. */
   realizedEur: string;
   /** Dividendos, intereses, staking y recompensas, brutos. */
   incomeEur: string;
+  /** El mismo importe por tipo de ingreso. */
+  incomeByType: Record<IncomeGroup, string>;
   feesEur: string;
   /** Lo que se ganaría o perdería vendiendo al final del año. */
   unrealizedEndEur: string;

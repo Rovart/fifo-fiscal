@@ -76,3 +76,18 @@ describe('Desempeño', () => {
     expect(r.monthly).toBeUndefined();
   });
 });
+
+describe('Desempeño: rentas por tipo', () => {
+  it('desglosa dividendos, intereses, staking y recompensas sin cambiar el total', () => {
+    const income = (kind: Operation['kind'], date: string, eur: string, extra: Partial<Operation> = {}): Operation =>
+      ({ ...trade('buy', date, '0', '0'), kind, quantity: null, grossLocal: eur, grossEur: eur, totalEur: eur, ...extra });
+    const ops: Operation[] = [
+      trade('buy', '2026-01-02', '10', '100'), income('dividend', '2026-03-01', '16'),
+      income('interest', '2026-04-01', '60.89', { assetId: 'TR-CASH', assetName: 'Intereses', assetClass: 'other' }),
+      income('reward', '2026-01-16', '30.26', { assetId: 'BTC', assetName: 'Bitcoin', assetClass: 'crypto', quantity: '0.0003680756' }),
+    ];
+    const year = computePerformance(engine(ops, '2026-11-03'), ops, book({}), '2026-11-03').years.find((x) => x.year === 2026)!;
+    expect(year.incomeEur).toBe('107.15');
+    expect(year.incomeByType).toEqual({ dividends: '16.00', interest: '60.89', staking: '0.00', rewards: '30.26', other: '0.00' });
+  });
+});

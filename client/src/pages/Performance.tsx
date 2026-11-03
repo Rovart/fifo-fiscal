@@ -1,7 +1,7 @@
 import { RefreshCw, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { D, ZERO } from '../../../shared/decimal.ts';
-import { BROKER_LABEL, type Broker, type PerformanceData, type PerformanceYear } from '../../../shared/types.ts';
+import { BROKER_LABEL, type Broker, type IncomeGroup, type PerformanceData, type PerformanceYear } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
 import { DivergingBars, StackBar, ValueChart, YearColumns } from '../components/charts.tsx';
 import { Callout, Disclosure, Empty, Help, Loading, PageHead, Segmented } from '../components/ui.tsx';
@@ -23,6 +23,10 @@ const placeName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BR
 
 const sum = (rows: PerformanceYear[], key: 'realizedEur' | 'incomeEur' | 'feesEur' | 'unrealizedChangeEur' | 'resultEur' | 'unknownCostProceedsEur') =>
   rows.reduce((s, r) => s.plus(D(r[key])), ZERO);
+const INCOME_LABEL: Record<IncomeGroup, string> = { dividends: 'Dividendos', interest: 'Intereses', staking: 'Staking', rewards: 'Recompensas', other: 'Otros' };
+const incomeParts = (rows: PerformanceYear[]) => (Object.keys(INCOME_LABEL) as IncomeGroup[])
+  .map((k) => ({ label: INCOME_LABEL[k], value: rows.reduce((s, r) => s.plus(D(r.incomeByType?.[k] ?? 0)), ZERO) }))
+  .filter((p) => !p.value.isZero());
 
 function Ranking({ title, rows }: { title: string; rows: { key: string; name: string; value: number }[] }) {
   return (
@@ -90,6 +94,7 @@ export function Performance() {
       result: sum(rows, 'resultEur'),
       realized: sum(rows, 'realizedEur'),
       income: sum(rows, 'incomeEur'),
+      incomeParts: incomeParts(rows),
       fees: sum(rows, 'feesEur'),
       change: sum(rows, 'unrealizedChangeEur'),
       unknown: sum(rows, 'unknownCostProceedsEur'),
@@ -159,10 +164,11 @@ export function Performance() {
         <div className="stats">
           <div className="stat"><div className="l">Lo vendido <Help text={HELP.loVendido} /></div><div className="v">{signed(view.realized.toFixed(2))}</div></div>
           <div className="stat"><div className="l">Sin vender <Help text={HELP.sinVender} /></div><div className="v">{signed(view.change.toFixed(2))}</div></div>
-          <div className="stat"><div className="l">Dividendos e intereses</div><div className="v">{signed(view.income.toFixed(2))}</div></div>
+          <div className="stat"><div className="l">Dividendos, intereses y recompensas <Help text={HELP.rentas} /></div><div className="v">{signed(view.income.toFixed(2))}</div></div>
           <div className="stat"><div className="l">Gastos</div><div className="v">{signed(view.fees.neg().toFixed(2))}</div></div>
           {afterTax && <div className="stat"><div className="l">Tras el IRPF estimado</div><div className={`v ${signClass(afterTax.toFixed(2))}`}>{signed(afterTax.toFixed(2))}</div></div>}
         </div>
+        {view.incomeParts.length > 1 && <p className="small faint perf-note">{view.incomeParts.map((p) => `${p.label} ${eur(p.value.toFixed(2))}`).join(' · ')}</p>}
         {view.unknown.gt(0) && <p className="small faint perf-note">No cuentan {eur(view.unknown.toFixed(2))} vendidos sin coste conocido.</p>}
       </div>
 
@@ -178,7 +184,7 @@ export function Performance() {
               { label: 'Resultado', value: signed(y.resultEur) },
               { label: 'Lo vendido', value: signed(y.realizedEur) },
               { label: 'Sin vender', value: signed(y.unrealizedChangeEur) },
-              { label: 'Dividendos e intereses', value: signed(y.incomeEur) },
+              { label: 'Dividendos, intereses y recompensas', value: signed(y.incomeEur) },
               { label: 'Gastos', value: signed(D(y.feesEur).neg().toFixed(2)) },
             ],
           }))}

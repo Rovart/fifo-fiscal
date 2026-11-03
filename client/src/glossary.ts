@@ -7,6 +7,7 @@ export const HELP = {
   rentabilidad: 'Lo ganado o perdido sobre el dinero que tuviste invertido, teniendo en cuenta cuánto tiempo estuvo. Con varios años, se encadenan.',
   loVendido: 'Lo que ganaste o perdiste en tus ventas, también lo aplazado: es lo que pasó, no lo que tributa.',
   sinVender: 'Cuánto subió o bajó en el periodo lo que no vendiste. No es dinero que hayas cobrado.',
+  rentas: 'Importes brutos, antes de retenciones: dividendos, intereses de cuentas y del préstamo de valores, staking y recompensas como los bonos por invitación.',
   coste: 'Lo que pagaste por lo que aún tienes, con comisiones. No es su valor actual.',
   latente: 'Lo que ganarías o perderías si vendieras todo hoy, antes de comisiones de venta. No cuenta para Hacienda hasta que vendas.',
   reciente: 'Comprado hace menos de 2 meses. Si vendes otros títulos de este valor con pérdida y esto sigue en cartera, parte de la pérdida se aplaza.',
