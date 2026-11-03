@@ -1,4 +1,4 @@
-export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'manual';
+export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'cointracking' | 'manual';
 export interface Profile { id: string; name: string }
 export type AssetClass = 'stock' | 'etf' | 'fund' | 'crypto' | 'bond' | 'other';
 export type Market = 'eu' | 'us' | 'other';
@@ -74,6 +74,8 @@ export interface Operation {
   simulated?: boolean;
   /** Solo durante el cálculo de una permuta parcialmente recortada. Nunca se guarda. */
   fifoLeg?: 'swap_in' | 'swap_out' | 'cash_only' | 'inventory_reset';
+  /** Exchange de origen cuando el extracto agrega varios, como CoinTracking. */
+  sourceExchange?: string;
   /** Evidencia utilizada para completar datos automáticamente, sin marcar una edición manual. */
   resolutions?: { code: 'isin' | 'dividend' | 'corporate_action' | 'fee'; at: string; source: string; detail: string }[];
 }
@@ -95,8 +97,12 @@ export interface Settings {
   /** Detecta el inicio del FIFO actual conservando todos los resultados anteriores. */
   fifoAutoStart?: boolean;
   /** Saldo total cero confirmado por el titular al cierre de un mes ya presentado.
-   * Aporta el dato que un extracto de exchange no prueba sobre carteras externas. */
+   * Aporta el dato que un extracto de exchange no prueba sobre carteras externas.
+   * La clave «CRYPTO:*» lo aplica a todas las criptomonedas. */
   fifoConfirmedClosures?: Record<string, { month: string; note: string }>;
+  /** Ventas de cripto sin compra previa entre estas fechas: toman el coste de las compras siguientes,
+   * como el informe de CoinTracking con el que se declaró ese periodo. */
+  shortfallCover?: { from: string; to: string } | null;
   /** Inicio inclusivo por activo; * es general y CRYPTO:* reinicia todo el historial cripto. */
   fifoStartDates?: Record<string, string>;
   toleranceEur: string;
@@ -400,5 +406,5 @@ export const KIND_LABEL: Record<OpKind, string> = {
   transfer_out: 'Salida a otra cuenta', split: 'Split o acciones gratis', isin_change: 'Canje de acciones',
 };
 export const BROKER_LABEL: Record<Broker, string> = {
-  degiro: 'DEGIRO', trade_republic: 'Trade Republic', kraken: 'Kraken', revolut: 'Revolut', coinbase: 'Coinbase', manual: 'Manual',
+  degiro: 'DEGIRO', trade_republic: 'Trade Republic', kraken: 'Kraken', revolut: 'Revolut', coinbase: 'Coinbase', cointracking: 'CoinTracking', manual: 'Manual',
 };

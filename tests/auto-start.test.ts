@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildYearReport, issuesForYear } from '../server/engine/report.ts';
 import { runEngine } from '../server/engine/fifo.ts';
+import { fifoHistory } from '../server/engine/history.ts';
+import { D } from '../shared/decimal.ts';
 import { DEFAULT_SETTINGS, type Operation } from '../shared/types.ts';
-import { run, trade } from './helpers.ts';
+import { ASSETS, run, trade } from './helpers.ts';
 
 const crypto = { assetClass: 'crypto' as const, broker: 'kraken' as const };
 const btc = (kind: 'buy' | 'sell', date: string, qty: string, price: string) => trade(kind, date, qty, price, { ...crypto, assetId: 'BTC', assetName: 'Bitcoin' });
@@ -130,5 +132,89 @@ describe('Recálculo automático del FIFO', () => {
     expect(automatic.inventoryResets).toMatchObject([{ date: '2025-01-31', quantityBefore: '0.8' }]);
     expect(buildYearReport(automatic, configured, 2025).sections).toEqual(buildYearReport(full, configured, 2025).sections);
     expect(automatic.years).toContain(2020);
+  });
+  it('en un ejercicio presentado deja como información los avisos que ya no afectan al FIFO', () => {
+    const usdc = { ...crypto, assetId: 'USDC', assetName: 'USD Coin' };
+    const ops: Operation[] = [
+      { ...trade('buy', '2025-01-01', '100', '0', usdc), kind: 'transfer_in' }, trade('sell', '2025-01-02', '100', '1', usdc),
+      { ...trade('buy', '2026-02-01', '50', '0', usdc), kind: 'transfer_in' }, trade('sell', '2026-02-02', '50', '1', usdc),
+    ];
+    const res = calculate(ops, true);
+    expect(issuesForYear(res, 2025).filter((i) => i.severity === 'error')).toHaveLength(1);
+    const filed = issuesForYear(res, 2025, 2025);
+    expect(filed.filter((i) => i.severity !== 'info')).toEqual([]);
+    expect(filed.some((i) => i.code === 'missing_lots' && i.message.startsWith('Ejercicio presentado'))).toBe(true);
+    expect(buildYearReport(res, { ...DEFAULT_SETTINGS, ...settings }, 2025).issues.every((i) => i.severity === 'info')).toBe(true);
+    // Una venta sin coste de un ejercicio abierto sigue pendiente aunque ya no quede saldo.
+    expect(issuesForYear(res, 2026, 2025).filter((i) => i.severity === 'error')).toHaveLength(1);
+  });
+  it('la fecha de inicio usa lo verificado en cada activo aunque queden restos de ciclos cerrados', () => {
+    const ops: Operation[] = [trade('sell', '2023-09-11', '10', '5'), btc('buy', '2025-04-07', '0.5', '200')];
+    const input = { ops, assets: ASSETS, settings: { ...DEFAULT_SETTINGS, ...settings, fifoAutoStart: true }, rateAt: () => D(1), today: '2026-11-03' };
+    expect(fifoHistory(input)).toMatchObject({ from: '2025-04-07', cryptoFrom: '2025-04-07', complete: true });
+    expect(fifoHistory({ ...input, settings: { ...input.settings, fifoAutoStart: false } })).toMatchObject({ from: '2023-09-11', cryptoFrom: null, complete: false });
+  });
+});
+
+describe('Saldo cero confirmado de todas las criptomonedas', () => {
+  it('reinicia cualquier cripto con historial anterior, incluidos restos de exchanges antiguos, y no toca las acciones', () => {
+    const maid = { ...crypto, assetId: 'MAID', assetName: 'MaidSafeCoin' };
+    const ops: Operation[] = [
+      trade('buy', '2016-04-22', '4000', '0.5', maid), btc('buy', '2021-01-01', '1', '100'), trade('buy', '2021-01-01', '10', '10'),
+      btc('sell', '2025-01-15', '0.5', '200'), btc('buy', '2025-04-07', '0.5', '300'),
+    ];
+    const res = run(ops, { ...settings, fifoAutoStart: true, fifoConfirmedClosures: { 'CRYPTO:*': { month: '2025-01', note: 'Vendí todas mis criptomonedas.' } } }, () => '1', '2026-11-03');
+    expect(res.inventoryResets?.map((r) => [r.assetId, r.quantityBefore]).sort()).toEqual([['BTC', '0.5'], ['MAID', '4000']]);
+    expect(res.positions.filter((p) => Number(p.quantity) > 0).map((p) => [p.assetId, p.quantity])).toEqual([['US0378331005', '10'], ['BTC', '0.5']]);
+    expect(res.fifoAuto).toMatchObject({ verified: true, starts: { BTC: '2025-04-07', MAID: '2026-01-01' } });
+  });
+});
+
+describe('Restos mínimos y CoinTracking', () => {
+  it('un resto mínimo tras el último movimiento se cierra sin efecto fiscal; uno real se conserva', () => {
+    const dust = run([trade('buy', '2025-06-02', '1', '10'), trade('sell', '2025-06-13', '0.99999999', '12')], settings, () => '1', '2026-11-03');
+    expect(dust.positions.filter((p) => Number(p.quantity) > 0)).toEqual([]);
+    expect(dust.inventoryResets).toMatchObject([{ assetId: 'US0378331005', date: '2025-06-13', quantityBefore: '0.00000001', note: 'Resto mínimo tras su último movimiento' }]);
+    expect(dust.disposals.map((d) => d.gainEur)).toEqual(['2']);
+    const real = run([trade('buy', '2025-06-02', '1', '10'), trade('sell', '2025-06-13', '0.5', '12')], settings, () => '1', '2026-11-03');
+    expect(real.positions[0]).toMatchObject({ quantity: '0.5' });
+    expect(real.inventoryResets).toEqual([]);
+  });
+  it('lo que trae CoinTracking es una cartera externa: un depósito en Kraken vuelve de ella antes de contarse como llegado de fuera', () => {
+    const xlm = { assetClass: 'crypto' as const, assetId: 'XLM', assetName: 'Stellar' };
+    const ops: Operation[] = [
+      trade('buy', '2021-05-03', '0.05', '0.4', { ...xlm, broker: 'cointracking' }),
+      { ...trade('buy', '2022-02-01', '29.8311', '0', { ...xlm, broker: 'kraken' }), kind: 'transfer_in' },
+      trade('sell', '2022-02-02', '29.8311', '0.18', { ...xlm, broker: 'kraken' }),
+    ];
+    const res = run(ops, settings, () => '1', '2026-11-03');
+    expect(res.disposals[0]).toMatchObject({ shortfall: '29.7811' });
+    expect(res.unmatchedTransfers).toEqual([]);
+    expect(res.issues.find((i) => i.code === 'missing_lots')).toMatchObject({ settled: true });
+  });
+});
+
+describe('Ventas sin compra previa con el criterio antiguo de CoinTracking', () => {
+  const coin = (assetId: string) => ({ assetClass: 'crypto' as const, broker: 'cointracking' as const, assetId, assetName: assetId });
+  it('toman el coste de las compras siguientes hasta la fecha indicada, también si la compra es del año siguiente', () => {
+    const ops: Operation[] = [
+      trade('sell', '2017-02-28', '2', '60', coin('DASH')), trade('buy', '2017-03-02', '3', '50', coin('DASH')),
+      trade('sell', '2017-12-21', '1', '2', coin('XRP')), trade('buy', '2018-01-16', '0.4', '1', coin('XRP')), trade('buy', '2018-02-01', '1', '1.5', coin('XRP')),
+      trade('sell', '2020-11-23', '1', '400', coin('ETH')), trade('buy', '2020-11-26', '1', '450', coin('ETH')),
+    ];
+    const res = run(ops, { lastFiledYear: 2025, shortfallCover: { from: '2017-01-01', to: '2017-12-31' } }, () => '1', '2026-11-03');
+    const sale = (id: string) => res.disposals.find((d) => d.assetId === id)!;
+    expect(sale('DASH')).toMatchObject({ year: 2017, costEur: '100', gainEur: '20', shortfall: '0' });
+    expect(sale('XRP')).toMatchObject({ year: 2017, costEur: '1.3', gainEur: '0.7', shortfall: '0' });
+    expect(sale('XRP').matches.map((m) => [m.acqDate.slice(0, 10), m.quantity])).toEqual([['2018-01-16', '0.4'], ['2018-02-01', '0.6']]);
+    // Después de la fecha se mantiene el coste 0 con aviso, como en los informes recientes.
+    expect(sale('ETH')).toMatchObject({ costEur: '0', shortfall: '1' });
+    expect(res.issues.filter((i) => i.code === 'missing_lots').map((i) => i.assetId)).toEqual(['ETH']);
+    expect(res.positions.filter((p) => Number(p.quantity) > 0).map((p) => [p.assetId, p.quantity]).sort()).toEqual([['DASH', '1'], ['ETH', '1'], ['XRP', '0.4']]);
+  });
+  it('sin compra posterior la venta conserva el coste 0 y el aviso', () => {
+    const res = run([trade('sell', '2017-02-28', '2', '60', coin('DASH'))], { shortfallCover: { from: '2017-01-01', to: '2017-12-31' } }, () => '1', '2026-11-03');
+    expect(res.disposals[0]).toMatchObject({ costEur: '0', shortfall: '2' });
+    expect(res.issues.filter((i) => i.code === 'missing_lots')).toHaveLength(1);
   });
 });

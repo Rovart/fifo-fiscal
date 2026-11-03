@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../shared/types.ts';
 
 process.env.FIFO_DB = ':memory:';
@@ -187,6 +187,27 @@ describe('Cuentas independientes', () => {
     await workbook.xlsx.load(await (await request('/api/export/2024', profile.id)).arrayBuffer());
     expect(workbook.getWorksheet('Transmisiones FIFO')!.rowCount).toBeGreaterThan(1);
   });
+  it('tras recalcular no quedan pendientes ni saldos por cuadrar de un ciclo cerrado ya presentado', async () => {
+    const profile = db.createProfile('Ciclo cerrado');
+    const history = [
+      'Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate',
+      '2023-09-11T14:00:00.000Z,MSFT,SELL - MARKET,10,EUR 30.00,EUR 300.00,EUR,1',
+      '2025-04-07T14:00:00.000Z,AAPL,BUY - MARKET,5,EUR 20.00,EUR 100.00,EUR,1',
+    ].join('\n');
+    db.withProfile(profile.id, () => {
+      svc.commitImport('Revolut.csv', history);
+      db.saveSettings({ ...DEFAULT_SETTINGS, lastFiledYear: 2025 });
+    });
+    const errors2023 = async () => (await (await request('/api/state', profile.id)).json()).counts.byYear[2023].errors;
+    expect(await errors2023()).toBeGreaterThan(0);
+    expect((await request('/api/fifo/recalculate', profile.id, 'POST')).status).toBe(200);
+    expect(await errors2023()).toBe(0);
+    const review = await (await request('/api/checks?year=2023', profile.id)).json();
+    expect(review.issues.some((i: { code: string; severity: string }) => i.code === 'missing_lots' && i.severity === 'info')).toBe(true);
+    expect(review.positions.map((p: { assetId: string }) => p.assetId)).not.toContain('MSFT');
+    expect((await (await request('/api/disposals?year=2023', profile.id)).json()).items).toHaveLength(1);
+    expect((await (await request('/api/fifo/history', profile.id)).json()).from).toBe('2025-04-07');
+  });
 });
 
 describe('Documentos de un mismo exchange', () => {
@@ -278,5 +299,46 @@ describe('Documentos de un mismo exchange', () => {
       expect(db.allOps()).toHaveLength(1);
       expect(db.allOps()[0]).toMatchObject({ kind: 'buy', otherCostsEur: '1.50', totalEur: '1003.50' });
     });
+  });
+});
+
+describe('CoinTracking junto al ledger de Kraken', () => {
+  const ct = [
+    '"Type","Buy","Cur.","Sell","Cur.","Fee","Cur.","Exchange","Group","Comment","Date","LPN","Tx-ID"',
+    '"Trade","0.10000000","BTC","2000.00000000","EUR","0.00000000","","Kraken","Kraken Ledger","","2023-05-01 10:00:00","",""',
+    '"Trade","0.20000000","BTC","4000.00000000","EUR","0.00000000","","Kraken","Kraken Ledger","","2024-06-01 10:00:00","",""',
+    '"Trade","0.30000000","BTC","6000.00000000","EUR","0.00000000","","Binance","","","2024-06-02 10:00:00","",""',
+  ].join('\n');
+  const ledger = fixture('kraken_ledgers.csv');
+  it('omite solo lo que ya cubre el ledger importado', () => {
+    db.withProfile(db.createProfile('Kraken antes').id, () => {
+      svc.commitImport('ledgers.csv', ledger);
+      const { preview } = svc.previewImport(ct);
+      expect(preview).toMatchObject({ newOps: 2, ignored: { 'Kraken: ya está en su propio extracto': 1 } });
+    });
+  });
+  it('avisa si el ledger llega después y se solapa con CoinTracking', () => {
+    db.withProfile(db.createProfile('CoinTracking antes').id, () => {
+      svc.commitImport('ct.csv', ct);
+      expect(svc.previewImport(ledger).preview.warnings.some((w) => w.includes('CoinTracking ya trae 1 movimiento de Kraken'))).toBe(true);
+    });
+  });
+});
+
+describe('Precio de mercado de Kraken', () => {
+  it('descarta la primera operación de un par que aún no cotizaba y valora por la contrapartida', async () => {
+    const at = (iso: string) => Date.parse(`${iso}Z`) / 1000;
+    // Kraken devuelve la primera operación posterior: CHZ empezó a cotizar mucho después.
+    const trade = (pair: string): [string, string, number] => pair.startsWith('CHZ') ? ['0.2073', '1', at('2021-03-01T10:00:00')] : ['9000', '1', at('2020-02-13T12:00:30')];
+    vi.stubGlobal('fetch', async (url: string) => {
+      const pair = new URL(url).searchParams.get('pair')!;
+      return { json: async () => ({ error: [], result: { [pair]: [trade(pair)], last: '0' } }) };
+    });
+    try {
+      await db.withProfile(db.createProfile('Precios').id, async () => {
+        expect(await svc.priceEur('CHZ', '2020-02-13T13:49:58')).toBeNull();
+        expect((await svc.priceEur('BTC', '2020-02-13T13:49:58'))?.toFixed()).toBe('9000');
+      });
+    } finally { vi.unstubAllGlobals(); }
   });
 });

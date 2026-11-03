@@ -71,13 +71,19 @@ const SECTION_META: Record<FormSection['id'], { title: string; boxes: Record<str
   },
 };
 
+/** Aviso de un ejercicio ya presentado que el FIFO actual no necesita: ya no hay nada que resolver. */
+export const filedAndSettled = (i: Issue, lastFiledYear?: number | null): boolean =>
+  !!i.settled && !!lastFiledYear && i.year !== undefined && i.year <= lastFiledYear;
+
 /**
  * Avisos que pueden cambiar el resultado de un año: los suyos y los de años anteriores
  * de un activo que se vende ese año. Un año posterior nunca altera a uno anterior.
+ * En un ejercicio presentado, lo que ya no afecta al FIFO queda como información.
  */
-export function issuesForYear(res: EngineResult, year: number): Issue[] {
+export function issuesForYear(res: EngineResult, year: number, lastFiledYear?: number | null): Issue[] {
   const sold = new Set(res.disposals.filter((d) => d.year === year).map((d) => d.assetId));
-  return res.issues.filter((i) => i.year === undefined || i.year === year || (i.year < year && i.severity !== 'info' && i.affectsFuture !== false && !i.settled && !!i.assetId && sold.has(i.assetId)));
+  return res.issues.filter((i) => i.year === undefined || i.year === year || (i.year < year && i.severity !== 'info' && i.affectsFuture !== false && !i.settled && !!i.assetId && sold.has(i.assetId)))
+    .map((i) => i.severity !== 'info' && filedAndSettled(i, lastFiledYear) ? { ...i, severity: 'info' as const, message: `Ejercicio presentado; no afecta al FIFO actual. ${i.message}` } : i);
 }
 
 /** Cambio de moneda sin efecto: el dinero solo pasa por la divisa para pagar o cobrar una operación. */
@@ -365,6 +371,6 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
     yearEnd: (res.snapshots[year] ?? []).filter((p) => !D(p.quantity).isZero()).map((p) => ({
       assetId: p.assetId, assetName: p.assetName, class: p.class, quantity: p.quantity, costEur: c(D(p.costEur)), byBroker: p.byBroker,
     })),
-    issues: issuesForYear(res, year),
+    issues: issuesForYear(res, year, settings.lastFiledYear),
   };
 }

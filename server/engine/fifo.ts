@@ -115,14 +115,30 @@ export function runEngine(input: EngineInput): EngineResult {
   const holdings = (assetId: string): Decimal => book(assetId).lots.reduce((s, l) => s.plus(l.qty), ZERO);
   const noteHistory = (assetId: string, date: string) => book(assetId).history.push({ date, qty: holdings(assetId) });
   const moveBroker = (assetId: string, broker: string, delta: Decimal) => {
+    // CoinTracking reúne exchanges sin extracto propio y carteras: para los demás es una cartera externa.
+    const where = broker === 'cointracking' ? 'externo' : broker;
     let m = brokerQty.get(assetId);
     if (!m) { m = new Map(); brokerQty.set(assetId, m); }
-    m.set(broker, (m.get(broker) ?? ZERO).plus(delta));
+    m.set(where, (m.get(where) ?? ZERO).plus(delta));
   };
 
   // Lo recibido de fuera sin haberlo sacado antes: se conoce la cantidad, no lo que costó.
   const outside = new Map<string, Decimal>();
   const soldFromOutside: Issue[] = [];
+  // Ventas sin compra previa que esperan a las compras siguientes para tener coste.
+  const owed = new Map<string, { disposal: Disposal; unit: Decimal; qty: Decimal }[]>();
+  const cover = settings.shortfallCover;
+  const missingLots = (d: Disposal, qty: Decimal, settled = false) => issues.push({
+    severity: 'error', code: 'missing_lots', opId: d.opId, assetId: d.assetId, assetName: d.assetName, date: d.date, quantity: toStr(qty, 8), year: d.year,
+    message: `Has vendido ${toStr(qty, 8)} más de lo que consta como comprado.`, ...(settled ? { settled, affectsFuture: false } : {}),
+  });
+  const settleOwed = (assetId: string | null, settled: boolean) => {
+    for (const [id, debts] of owed) {
+      if (assetId && id !== assetId) continue;
+      for (const d of debts) missingLots(d.disposal, d.qty, settled);
+      owed.delete(id);
+    }
+  };
   const useOutside = (assetId: string, qty: Decimal): boolean => {
     const pending = outside.get(assetId) ?? ZERO;
     if (pending.lte(0)) return false;
@@ -206,13 +222,36 @@ export function runEngine(input: EngineInput): EngineResult {
     assetId: string; assetName: string; klass: DisposalClass; opId: string | null; date: string; qty: Decimal; cost: Decimal;
     costLocal?: Decimal; feesEur?: Decimal; currency?: string; isPurchase: boolean; orderKey?: string;
   }): Lot => {
+    // Primero da coste a las ventas anteriores que no lo tenían.
+    let qty = p.qty, cost = p.cost;
+    const debts = p.klass === 'crypto' ? owed.get(p.assetId) : undefined;
+    while (debts?.length && qty.gt(0)) {
+      const d = debts[0] as { disposal: Disposal; unit: Decimal; qty: Decimal };
+      const take = Decimal.min(d.qty, qty), part = cost.times(take.div(qty)), proceeds = d.unit.times(take);
+      const falta = d.disposal.matches.find((m) => m.missing) as Match;
+      d.disposal.matches.splice(d.disposal.matches.indexOf(falta), 0, {
+        lotId: 'COMPRA-POSTERIOR', acqOpId: p.opId, acqDate: p.date, quantity: toStr(take, 10), costEur: toStr(part, 6),
+        proceedsEur: toStr(proceeds, 6), gainEur: toStr(proceeds.minus(part), 6), broker: p.opId ? brokerOfOp.get(p.opId) : undefined,
+      });
+      const left = D(falta.quantity).minus(take);
+      if (left.gt(0)) Object.assign(falta, { quantity: toStr(left, 10), proceedsEur: toStr(d.unit.times(left), 6), gainEur: toStr(d.unit.times(left), 6) });
+      else d.disposal.matches.splice(d.disposal.matches.indexOf(falta), 1);
+      d.disposal.costEur = toStr(D(d.disposal.costEur).plus(part), 6);
+      d.disposal.gainEur = toStr(D(d.disposal.gainEur).minus(part), 6);
+      d.disposal.shortfall = toStr(D(d.disposal.shortfall).minus(take), 10);
+      d.qty = d.qty.minus(take);
+      if (d.qty.isZero()) debts.shift();
+      qty = qty.minus(take);
+      cost = cost.minus(part);
+    }
+    const kept = p.qty.isZero() ? ZERO : qty.div(p.qty);
     const lot: Lot = {
       id: `L${++seq}`, assetId: p.assetId, assetName: p.assetName, klass: p.klass, opId: p.opId, date: p.date,
-      qty: p.qty, cost: p.cost, costLocal: p.costLocal ?? p.cost, feesEur: p.feesEur ?? ZERO, currency: p.currency ?? 'EUR',
+      qty, cost, costLocal: (p.costLocal ?? p.cost).times(kept), feesEur: (p.feesEur ?? ZERO).times(kept), currency: p.currency ?? 'EUR',
       isPurchase: p.isPurchase, blocks: [],
     };
     const b = book(p.assetId);
-    b.lots.push(lot);
+    if (qty.gt(0)) b.lots.push(lot);
     b.lots.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
     if (p.isPurchase) {
       b.purchases.push({ date: dateOf(p.date), key: p.orderKey ?? lot.id });
@@ -326,7 +365,9 @@ export function runEngine(input: EngineInput): EngineResult {
       for (const t of released) emitTranche(t, 'integrated');
     }
     noteHistory(p.assetId, date);
-    if (shortfall.gt(0)) {
+    if (shortfall.gt(0) && p.klass === 'crypto' && cover && date >= cover.from && date <= cover.to && !p.op.simulated) {
+      owed.set(p.assetId, [...(owed.get(p.assetId) ?? []), { disposal, unit, qty: shortfall }]);
+    } else if (shortfall.gt(0)) {
       const fromOutside = useOutside(p.assetId, shortfall);
       const issue: Issue = {
         severity: 'error', code: 'missing_lots', opId: p.op.id, assetId: p.assetId, assetName: p.assetName, date, quantity: toStr(shortfall, 8), year: yearOf(date),
@@ -434,14 +475,46 @@ export function runEngine(input: EngineInput): EngineResult {
     orderRates.set(raw.orderRef, e);
   }
 
-  const resets: Operation[] = Object.entries(settings.fifoConfirmedClosures ?? {}).flatMap(([id, c]) => {
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || Number(c.month.slice(0, 4)) > (settings.lastFiledYear ?? 0)) return [];
+  // «CRYPTO:*» confirma que no quedaba ninguna criptomoneda, también las de historiales antiguos.
+  const resets = new Map<string, Operation>();
+  for (const [key, c] of Object.entries(settings.fifoConfirmedClosures ?? {})) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || Number(c.month.slice(0, 4)) > (settings.lastFiledYear ?? 0)) continue;
     const datetime = new Date(Date.parse(`${nextMonth(c.month)}-01T00:00:00Z`) - 1000).toISOString().slice(0, 19);
-    if (dateOf(datetime) > today) return [];
-    const ref = input.ops.find((o) => !o.deleted && o.assetId === id && o.assetClass === 'crypto' && o.datetime <= datetime);
-    return ref ? [{ ...ref, id: `RESET:${id}:${c.month}`, kind: 'transfer_out' as const, datetime, fifoLeg: 'inventory_reset' as const, note: c.note, reviewReasons: [], original: null }] : [];
+    if (dateOf(datetime) > today) continue;
+    for (const ref of input.ops) {
+      const id = `RESET:${ref.assetId}:${c.month}`;
+      if (ref.deleted || ref.assetClass !== 'crypto' || ref.datetime > datetime || (key !== 'CRYPTO:*' && ref.assetId !== key) || resets.has(id)) continue;
+      resets.set(id, { ...ref, id, kind: 'transfer_out' as const, datetime, fifoLeg: 'inventory_reset' as const, note: c.note, reviewReasons: [], original: null });
+    }
+  }
+  const sorted = sortOps([...input.ops.filter((o) => !o.deleted), ...resets.values()]);
+  // Un resto mínimo tras el último movimiento de un activo (redondeos de fracciones o de un
+  // exchange) no es una posición: se cierra sin efecto fiscal para que no quede como saldo.
+  const lastMove = new Map<string, { at: number; qty: Decimal }>();
+  sorted.forEach((o, at) => {
+    if (o.fifoLeg === 'inventory_reset') return;
+    if (o.assetId) lastMove.set(o.assetId, { at, qty: isNum(o.quantity) ? D(o.quantity).abs() : ZERO });
+    if (o.counterAsset && ['swap', 'isin_change'].includes(o.kind)) lastMove.set(o.counterAsset, { at, qty: isNum(o.counterQuantity) ? D(o.counterQuantity).abs() : ZERO });
   });
-  for (const raw of sortOps([...input.ops.filter((o) => !o.deleted), ...resets])) {
+  const closeAfter = new Map<number, { assetId: string; qty: Decimal }[]>();
+  for (const [assetId, m] of lastMove) closeAfter.set(m.at, [...(closeAfter.get(m.at) ?? []), { assetId, qty: m.qty }]);
+  const closeDust = (at: number) => {
+    for (const { assetId, qty: moved } of closeAfter.get(at) ?? []) {
+      const b = books.get(assetId);
+      const qty = b?.lots.reduce((s, l) => s.plus(l.qty), ZERO) ?? ZERO;
+      const cost = b?.lots.reduce((s, l) => s.plus(l.cost), ZERO) ?? ZERO;
+      const away = outside.get(assetId) ?? ZERO, limit = moved.times('0.001');
+      if (!b || (qty.isZero() && away.isZero()) || qty.gt(limit) || away.gt(limit) || cost.gte(1) || b.pending.length) continue;
+      const date = dateOf((sorted[at] as Operation).datetime);
+      if (qty.gt(0)) inventoryResets.push({ assetId, date, quantityBefore: qty.toFixed(), costEurBefore: cost.toFixed(), note: 'Resto mínimo tras su último movimiento' });
+      b.lots = [];
+      brokerQty.delete(assetId);
+      outside.delete(assetId);
+      noteHistory(assetId, date);
+    }
+  };
+  for (const [at, raw] of sorted.entries()) {
+    if (at > 0) closeDust(at - 1);
     const op = resolveOp(raw, settings, rateAt);
     const y = yearOf(op.datetime);
     if (currentYear !== null && y !== currentYear) {
@@ -460,6 +533,7 @@ export function runEngine(input: EngineInput): EngineResult {
     if (settings.fxTracking && op.currency !== 'EUR' && op.currency) names.set(fxAsset(op.currency), { name: op.currency, klass: 'fx' });
 
     if (op.fifoLeg === 'inventory_reset') {
+      settleOwed(op.assetId, true);
       const b = book(op.assetId);
       inventoryResets.push({ assetId: op.assetId, date: dateOf(op.datetime), quantityBefore: holdings(op.assetId).toFixed(), costEurBefore: b.lots.reduce((sum, lot) => sum.plus(lot.cost), ZERO).toFixed(), note: op.note ?? '' });
       b.lots = []; b.pending = []; b.purchases = []; b.history = [];
@@ -782,6 +856,8 @@ export function runEngine(input: EngineInput): EngineResult {
     }
   }
 
+  if (sorted.length) closeDust(sorted.length - 1);
+  settleOwed(null, false);
   const positions = buildPositions();
   if (currentYear !== null) {
     const endYear = Math.max(currentYear, yearOf(today));

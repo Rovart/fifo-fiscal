@@ -288,7 +288,7 @@ function YearEnd({ rep, year }: { rep: YearReport; year: number }) {
     .filter((p) => classes.includes(p.class) && Object.keys(p.byBroker).some((b) => brokers.includes(b)))
     .reduce((s, p) => s.plus(D(p.costEur)), D(0));
   const secCost = cost(['degiro', 'trade_republic', 'revolut'], ['stock', 'etf', 'fund', 'bond']);
-  const cryptoCost = cost(['kraken', 'trade_republic', 'revolut', 'coinbase'], ['crypto']);
+  const cryptoCost = cost(['kraken', 'trade_republic', 'revolut', 'coinbase', 'cointracking'], ['crypto']);
   const high = secCost.gt(50000) || cryptoCost.gt(50000);
   return (
     <Disclosure card flush title={<span className="inline">Lo que tenías el 31 de diciembre de {year} <Help text={HELP.posicion} /></span>} meta={high ? <span className="tag warn">Revisa 720 y 721</span> : undefined}>

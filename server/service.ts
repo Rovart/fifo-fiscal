@@ -12,7 +12,7 @@ import { buildYearReport, issuesForYear, type YearReport } from './engine/report
 import { addMonths } from './engine/dates.ts';
 import { krakenAsset } from './importers/kraken.ts';
 import { baseOp, review } from './importers/common.ts';
-import { parseFile, type ParsedImport } from './importers/index.ts';
+import { parseFile, type Coverage, type ParsedImport } from './importers/index.ts';
 
 export const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -178,9 +178,19 @@ export function setAssetIsin(oldId: string, isinRaw: string, reference?: { name:
   }
 }
 
+/** Periodo de cada exchange con extracto propio: CoinTracking no lo duplica. */
+function nativeCoverage(): Coverage {
+  const range = db.prepare('SELECT broker, MIN(datetime) AS "from", MAX(datetime) AS "to" FROM operations WHERE deleted = 0 AND broker IN (?, ?) GROUP BY broker').all('kraken', 'coinbase') as { broker: Broker; from: string; to: string }[];
+  return Object.fromEntries(range.map((r) => [r.broker, { from: r.from, to: r.to }]));
+}
+
 export function previewImport(text: string): { parsed: ParsedImport; preview: ImportPreview } {
-  const parsed = parseFile(text, rateAt);
+  const parsed = parseFile(text, rateAt, nativeCoverage());
   linkTickers(parsed);
+  const from = parsed.ops.map((o) => o.datetime).sort()[0], to = parsed.ops.map((o) => o.datetime).sort().at(-1);
+  const label = { kraken: 'Kraken', coinbase: 'Coinbase' }[parsed.broker as string];
+  const overlap = label && from && to ? allOps().filter((o) => o.broker === 'cointracking' && o.sourceExchange?.toLowerCase().startsWith(label.toLowerCase()) && o.datetime >= from && o.datetime <= to).length : 0;
+  if (overlap) parsed.warnings.push(`CoinTracking ya trae ${overlap === 1 ? '1 movimiento' : `${overlap} movimientos`} de ${label} de estas fechas. Borra ese documento y vuelve a añadirlo después de este: así no se duplican.`);
   const fresh = parsed.ops.filter((o) => !o.sourceKey || !hasSourceKey(o.sourceKey));
   const kinds: Record<string, number> = {};
   for (const o of fresh) kinds[o.kind] = (kinds[o.kind] ?? 0) + 1;
@@ -511,16 +521,30 @@ const madridToUnix = (dt: string): number => {
 };
 
 let lastCall = 0;
+// Un par que Kraken no tiene no se vuelve a pedir: las altcoins antiguas se valoran por su contrapartida.
+const unknownPairs = new Set<string>();
+// Kraken devuelve la primera operación posterior aunque sea años después (un par aún sin cotizar):
+// solo vale un precio cercano, y se recuerda el hueco para no volver a preguntar.
+const NEAR = 3 * 3600;
+const gaps = new Map<string, { from: number; to: number }[]>();
 async function krakenFirstTrade(pair: string, since: number): Promise<Decimal | null> {
+  if (unknownPairs.has(pair) || gaps.get(pair)?.some((g) => since >= g.from && since + NEAR < g.to)) return null;
   const wait = 1100 - (Date.now() - lastCall);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCall = Date.now();
   const res = await fetch(`https://api.kraken.com/0/public/Trades?pair=${pair}&since=${since}&count=1`);
   const data = (await res.json()) as { error: string[]; result?: Record<string, unknown> };
+  if (data.error?.some((e) => e.includes('Unknown asset pair'))) unknownPairs.add(pair);
   if (data.error?.length || !data.result) return null;
   const key = Object.keys(data.result).find((k) => k !== 'last');
-  const trades = key ? (data.result[key] as [string][]) : [];
-  return trades[0] ? D(trades[0][0]) : null;
+  const trades = key ? (data.result[key] as [string, string, number][]) : [];
+  const first = trades[0];
+  if (!first) return null;
+  if (Number(first[2]) - since > NEAR) {
+    gaps.set(pair, [...(gaps.get(pair) ?? []), { from: since, to: Number(first[2]) }]);
+    return null;
+  }
+  return D(first[0]);
 }
 
 /** Precio en euros del activo en el instante. Usa EUR o, si no existe el par, USD al tipo del BCE. */
@@ -545,32 +569,49 @@ const missingValue = (o: Operation) =>
 
 export const countMissingValues = () => calculationOps().filter(missingValue).length;
 
+/** Valor de mercado del activo entregado o, si Kraken no lo cotiza, de lo recibido a cambio. */
+async function valueFromKraken(op: Operation): Promise<boolean> {
+  const qty = D(op.quantity);
+  let price = await priceEur(op.assetId, op.datetime);
+  if (!price && op.kind === 'swap' && op.counterAsset && op.counterQuantity) {
+    const counter = await priceEur(op.counterAsset, op.datetime);
+    if (counter) price = counter.times(D(op.counterQuantity)).div(qty);
+  }
+  // Puede haberse editado mientras se esperaba el precio.
+  const current = getOp(op.id);
+  if (!price || !current || current.grossEur || current.deleted) return false;
+  const value = cents(qty.times(price));
+  const next: Operation = {
+    ...current, unitPrice: toStr(price, 10), grossLocal: value, grossEur: value, currency: 'EUR', fxRate: '1',
+    note: [current.note, 'Valor de mercado: API pública de Kraken'].filter(Boolean).join(' · '),
+  };
+  next.totalEur = cents(expectedTotal(next));
+  putOp(next);
+  addHistory(op.id, 'valor en euros obtenido de Kraken', current, next);
+  return true;
+}
+
 export async function resolveCryptoValues(limit = 40) {
   const active = new Set(calculationOps().filter(missingValue).map((o) => o.id));
   const pending = allOps().filter((o) => active.has(o.id));
   let done = 0;
   const failed: string[] = [];
   for (const op of pending.slice(0, limit)) {
-    let price = await priceEur(op.assetId, op.datetime);
-    let qty = D(op.quantity);
-    if (!price && op.kind === 'swap' && op.counterAsset && op.counterQuantity) {
-      const counter = await priceEur(op.counterAsset, op.datetime);
-      if (counter) price = counter.times(D(op.counterQuantity)).div(qty);
-    }
-    if (!price) { failed.push(`${op.assetId} ${op.datetime.slice(0, 10)}`); continue; }
-    qty = D(op.quantity);
-    const value = cents(qty.times(price));
-    const before = op;
-    const next: Operation = {
-      ...op, unitPrice: toStr(price, 10), grossLocal: value, grossEur: value, currency: 'EUR', fxRate: '1',
-      note: [op.note, 'Valor de mercado: API pública de Kraken'].filter(Boolean).join(' · '),
-    };
-    next.totalEur = cents(expectedTotal(next));
-    putOp(next);
-    addHistory(op.id, 'valor en euros obtenido de Kraken', before, next);
-    done++;
+    if (await valueFromKraken(op)) done++;
+    else failed.push(`${op.assetId} ${op.datetime.slice(0, 10)}`);
   }
   return { done, failed, remaining: Math.max(0, pending.length - done - failed.length) };
+}
+
+const unpriced = new Set<string>();
+/** CoinTracking no trae euros en las permutas entre criptos: se valoran todas, también las de ciclos anteriores. */
+export async function valueImportedCrypto(): Promise<number> {
+  let done = 0;
+  for (const op of allOps().filter((o) => o.broker === 'cointracking' && missingValue(o) && !o.edited && !unpriced.has(`${currentProfileId()}:${o.id}`))) {
+    if (await valueFromKraken(op)) done++;
+    else unpriced.add(`${currentProfileId()}:${op.id}`);
+  }
+  return done;
 }
 
 // ---- Simulador ----
@@ -626,14 +667,14 @@ export function simulateSales(p: { sales: { assetId: string; quantity: string; p
 }
 
 // ---- Cuadre ----
-const pendingCount = (res: ReturnType<typeof runEngine>, year: number): number => issuesForYear(res, year).filter((i) => i.severity !== 'info').length;
+const pendingCount = (res: ReturnType<typeof runEngine>, year: number): number => issuesForYear(res, year, getSettings().lastFiledYear).filter((i) => i.severity !== 'info').length;
 
 /** Pendientes de cada año, para que lo de otro ejercicio no bloquee el que se está declarando. */
 export function pendingByYear(): Record<number, { errors: number; warnings: number }> {
   const res = engine();
   const out: Record<number, { errors: number; warnings: number }> = {};
   for (const y of res.years) {
-    const list = issuesForYear(res, y);
+    const list = issuesForYear(res, y, getSettings().lastFiledYear);
     out[y] = { errors: list.filter((i) => i.severity === 'error').length, warnings: list.filter((i) => i.severity === 'warning').length };
   }
   return out;
@@ -641,11 +682,17 @@ export function pendingByYear(): Record<number, { errors: number; warnings: numb
 
 export function checks(year?: number) {
   const res = engine();
-  const issues = year ? issuesForYear(res, year) : res.issues;
+  const issues = year ? issuesForYear(res, year, getSettings().lastFiledYear) : res.issues;
   const starts = fifoStarts(allOps(), effectiveFifoSettings(getSettings(), res));
   const balances = (db.prepare('SELECT broker, asset_id, quantity, as_of, source FROM balances').all() as { broker: string; asset_id: string; quantity: string; as_of: string | null; source: string | null }[])
     .filter((b) => !b.as_of || b.as_of.slice(0, 10) >= (fifoStartFor(starts, b.asset_id) ?? ''));
-  const positions = res.positions;
+  // Un activo cuyo último movimiento es anterior a su inicio del FIFO pertenece
+  // a un ciclo anterior: sus restos de historial incompleto no se cuadran.
+  const lastOp = new Map(allOps().flatMap((o) => [o.assetId, ...(o.counterAsset ? [o.counterAsset] : [])].map((id) => [id, o.datetime.slice(0, 10)] as const)));
+  const positions = res.positions.filter((p) => {
+    const last = lastOp.get(p.assetId);
+    return !last || last >= (fifoStartFor(starts, p.assetId) ?? '');
+  });
   const rows = positions.flatMap((p) =>
     Object.entries(p.byBroker).filter(([b]) => b !== 'externo' || balances.some((v) => v.broker === 'externo' && v.asset_id === p.assetId)).map(([broker, qty]) => {
       const declared = balances.find((b) => b.broker === broker && b.asset_id === p.assetId);

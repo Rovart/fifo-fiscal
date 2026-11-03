@@ -46,6 +46,11 @@ const BROKERS: { id: Broker; needs: { format: string; label: string }[]; steps: 
     needs: [{ format: 'Historial de transacciones', label: 'Transacciones' }],
     steps: ['Abre tu perfil y entra en Informes.', 'Genera el Historial de transacciones.', 'Todos los activos, formato CSV, desde el principio.'],
   },
+  {
+    id: 'cointracking',
+    needs: [{ format: 'Lista de operaciones', label: 'Operaciones' }],
+    steps: ['Entra en Introducir monedas.', 'Pulsa Exportar y elige CSV.', 'Añade antes los extractos de Kraken o Coinbase: lo que ya cubren no se duplica.'],
+  },
 ];
 
 
@@ -98,7 +103,9 @@ export function Upload() {
     commitLock.current = true;
     setBusy(true);
     setError('');
-    const order = [...items].filter((it) => it.preview && !it.done).sort((a, b) => Number(b.preview?.format === 'Transactions') - Number(a.preview?.format === 'Transactions'));
+    // CoinTracking va al final: omite lo que ya cubren los extractos propios de cada exchange.
+    const rank = (it: Item) => it.preview?.format === 'Transactions' ? 0 : it.preview?.broker === 'cointracking' ? 2 : 1;
+    const order = [...items].filter((it) => it.preview && !it.done).sort((a, b) => rank(a) - rank(b));
     let added = 0, documents = 0;
     try {
       for (const it of order) {
@@ -150,14 +157,14 @@ export function Upload() {
         onDrop={(e) => { e.preventDefault(); setOver(false); if (!locked) void addFiles(e.dataTransfer.files); }}>
         <div className="upload-icon">{reading ? <Loader2 size={24} className="spin" /> : <UploadCloud size={24} />}</div>
         <div><div className="strong">{reading ? 'Leyendo documentos…' : hasHistory ? 'Arrastra más documentos' : 'Arrastra tus extractos CSV'}</div><div className="small muted">{hasHistory ? 'Puedes añadir varios del mismo exchange.' : 'O elígelos aquí. Incluye todo el historial.'}</div></div>
-        {!hasHistory && <span className="upload-formats">DEGIRO · Trade Republic · Kraken · Revolut · Coinbase</span>}
+        {!hasHistory && <span className="upload-formats">DEGIRO · Trade Republic · Kraken · Revolut · Coinbase · CoinTracking</span>}
       </div>
       {(error && !removal || historyError) && <Callout tone="error">{historyError || error}</Callout>}
 
       {!!state.counts.operations && fifo && <Disclosure card title={<span>FIFO actual {fifo.cryptoFrom ? 'cripto ' : ''}{fifo.cryptoFrom || fifo.from ? <>desde <strong>{dateShort(fifo.cryptoFrom ?? fifo.from)}</strong></> : 'cerrado'}{!fifo.complete && !fifo.cryptoFrom && <span className="small muted"> · Historial por completar</span>}</span>}>
           {fifo.cryptoFrom && fifo.from && fifo.from < fifo.cryptoFrom && <p className="small muted">Otros activos necesitan historial desde {dateShort(fifo.from)}.</p>}
           <p className="small muted">{!fifo.complete ? 'Faltan datos para confirmar un inicio más reciente.' : fifo.from ? 'Para continuar en próximos años, necesitas los movimientos desde esta fecha. Lo anterior ya no sostiene posiciones ni pérdidas aplazadas.' : 'No quedan posiciones ni pérdidas aplazadas. Puedes empezar con las próximas operaciones.'} Conserva también los movimientos del año que declares y tus pérdidas pendientes de compensar.</p>
-          {state.settings.fifoAutoStart && Object.entries(state.settings.fifoConfirmedClosures ?? {}).map(([id, c]) => <p className="small muted" key={id} title={c.note}>{id} · Saldo cero confirmado por el titular en {monthLabel(c.month)}.</p>)}
+          {state.settings.fifoAutoStart && Object.entries(state.settings.fifoConfirmedClosures ?? {}).map(([id, c]) => <p className="small muted" key={id} title={c.note}>{id === 'CRYPTO:*' ? 'Todas las criptomonedas' : id} · Saldo cero confirmado por el titular en {monthLabel(c.month)}.</p>)}
           {fifo.assets.length > 0 && <div className="list">{fifo.assets.map((a) => <div className="item" key={a.assetId}><span className="main-col small">{a.assetName}{a.deferred && <span className="muted"> · Pérdida aplazada</span>}</span><span className="small num">{dateShort(a.from)}</span></div>)}</div>}
       </Disclosure>}
 

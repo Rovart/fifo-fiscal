@@ -400,3 +400,45 @@ describe('Revolut', () => {
     expect(() => parseFile('Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance\nTOPUP,Current,2024-01-01,2024-01-01,x,1,0,EUR,COMPLETED,1\n', rate)).toThrow(/Inversiones o el de Cripto/);
   });
 });
+
+describe('CoinTracking', () => {
+  const kraken = { kraken: { from: '2021-10-01T00:00:00', to: '2025-01-31T00:00:00' } };
+  it('importa la lista de operaciones con importes netos y omite lo que cubre el ledger de Kraken', () => {
+    const p = parseFile(fx('cointracking.csv'), rate, kraken);
+    expect(p).toMatchObject({ broker: 'cointracking', format: 'Lista de operaciones', rows: 12, ignored: { 'Kraken: ya está en su propio extracto': 1 } });
+    expect(p.ops.every((o) => o.broker === 'cointracking')).toBe(true);
+    // El importe en euros ya incluye la comisión, como en el ledger de Kraken.
+    expect(p.ops.find((o) => o.kind === 'buy')).toMatchObject({ assetId: 'BTC', quantity: '0.5', grossEur: '10000.00', feeEur: '0.48', totalEur: '10000.48', sourceExchange: 'Binance' });
+    expect(p.ops.find((o) => o.kind === 'sell' && o.sourceExchange === 'Binance')).toMatchObject({ quantity: '0.1', grossEur: '1652.28', feeEur: '2.64', totalEur: '1649.64' });
+    expect(p.ops.find((o) => o.sourceExchange === 'Kraken')).toMatchObject({ kind: 'sell', datetime: '2021-03-11T15:33:27', grossEur: '6100.28', totalEur: '6090.52' });
+    assertBalanced(p.ops.filter((o) => o.grossEur));
+  });
+  it('valora a 1 USD la permuta con una stablecoin y deja las demás para el precio de mercado', () => {
+    const p = parseFile(fx('cointracking.csv'), rate, kraken);
+    const swaps = p.ops.filter((o) => o.kind === 'swap');
+    expect(swaps[0]).toMatchObject({ assetId: 'BTC', quantity: '0.1', counterAsset: 'NXT', counterQuantity: '1000', grossEur: null });
+    expect(swaps[1]).toMatchObject({ assetId: 'NXT', quantity: '1000', counterAsset: 'USDT', counterQuantity: '2160', grossEur: '2000.00' });
+    expect(swaps[1]?.note).toContain('Valorada a 1 USD por USDT');
+  });
+  it('trata bajas, pagos, retiradas y comisiones', () => {
+    const p = parseFile(fx('cointracking.csv'), rate, kraken);
+    expect(p.ops.find((o) => o.assetId === 'DOGE')).toMatchObject({ kind: 'sell', quantity: '500', grossEur: '0.00' });
+    expect(p.ops.find((o) => o.assetId === 'DOGE')?.reviewReasons?.[0]).toContain('Perdido en hack');
+    expect(p.ops.find((o) => o.kind === 'sell' && o.quantity === '0.01')).toMatchObject({ assetId: 'BTC', grossEur: null });
+    expect(p.ops.find((o) => o.kind === 'transfer_out')).toMatchObject({ assetId: 'BTC', quantity: '0.0499' });
+    expect(p.ops.filter((o) => o.kind === 'fee').map((o) => [o.assetId, o.quantity, o.grossEur])).toEqual([['BTC', '0.0001', null], ['COINTRACKING', '0.09', '0.09']]);
+    expect(p.warnings).toEqual(['1 movimiento de tipo «Margin Fee» sin importar. Añádelos a mano si tienen efecto fiscal.']);
+  });
+  it('lo recibido sin pagar, como un regalo, se toma con coste 0 y se avisa', () => {
+    const gift = parseFile(fx('cointracking.csv'), rate).ops.find((o) => o.assetId === 'ETH');
+    expect(gift).toMatchObject({ kind: 'buy', quantity: '5', grossEur: '0.00', totalEur: '0.00' });
+    expect(gift?.reviewReasons).toEqual(['«Gift/Tip» en CoinTracking («Regalo»): se toma con coste 0, como en tu historial.']);
+  });
+  it('sin extracto propio de Kraken conserva también sus filas', () => {
+    expect(parseFile(fx('cointracking.csv'), rate).ops.filter((o) => o.sourceExchange === 'Kraken')).toHaveLength(2);
+  });
+  it('rechaza el informe fiscal y explica qué exportar', () => {
+    const report = 'Cantidad,Divisa,Fecha de adquisición,Fecha de venta,Corto/Largo,Compra /Entrada el,Venta /Salida el,Tipo,Base de coste en EUR,Ingresos en EUR,Beneficios/Pérdidas en EUR\n"1,0",BTC,01.01.2021,01.01.2022,A corto plazo,Kraken,Kraken,Operación,"1,0","2,0","1,0"\n';
+    expect(() => parseFile(report, rate)).toThrow(/lista de operaciones/);
+  });
+});

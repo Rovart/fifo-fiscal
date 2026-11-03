@@ -16,6 +16,13 @@ export function fifoHistory(input: EngineInput, result = runEngine(input)): Fifo
     else { if (from < old.from) old.from = from; old.deferred ||= deferred; }
   };
   for (const lot of result.openLots) if (D(lot.quantity).gt(0)) need(lot.assetId, lot.assetName, lot.acqDate);
+  // El recálculo ya comprobó activo por activo qué historial sostiene los
+  // ejercicios abiertos, incluidas las compras de lo que se vende en ellos.
+  const auto = result.fifoAuto?.verified ? result.fifoAuto.starts : null;
+  const open = input.settings.lastFiledYear ? `${input.settings.lastFiledYear + 1}-01-01` : first;
+  for (const [id, date] of Object.entries(auto ?? {})) {
+    if (open && date < open) need(id, input.ops.find((o) => o.assetId === id)?.assetName ?? id, date);
+  }
   for (const s of result.fxShorts ?? []) need(`FX:${s.currency}`, s.currency, s.date);
   for (const t of result.tranches) {
     if (t.status === 'integrated') continue;
@@ -50,17 +57,20 @@ export function fifoHistory(input: EngineInput, result = runEngine(input)): Fifo
   let from = assets[0]?.from ?? null;
   const complete = !result.issues.some((i) => i.severity === 'error' && !i.settled)
     && !result.openLots.some((l) => !l.acqOpId) && !result.unmatchedTransfers?.length;
-  if (from && from !== first) {
+  if (from && from !== first && !auto) {
     // La fecha se ofrece solo si recalcular desde ella reproduce lotes, costes,
     // ubicación y pérdidas pendientes. Las reglas de recompra y divisa también
-    // pueden enlazar operaciones que no se ven en los lotes abiertos.
+    // pueden enlazar operaciones que no se ven en los lotes abiertos. Un corte
+    // único falla con restos de activos cerrados; el recálculo verifica cada uno.
     const replay = runEngine({ ...input, settings: { ...settings, fifoAutoStart: false }, ops: ops.filter((o) => o.datetime.slice(0, 10) >= from!), monthly: false });
     if (fingerprint(replay) !== fingerprint(result)) from = first;
   }
   if (!complete) from = first;
   const held = new Set(result.openLots.map((l) => l.assetId));
   const traded = new Set(ops.filter((o) => ['buy', 'sell', 'swap', 'staking', 'reward'].includes(o.kind)).map((o) => o.assetId));
-  const cryptoFrom = input.settings.fifoStartDates?.['CRYPTO:*'] ? fifoStartFor(new Map(Object.entries(input.settings.fifoStartDates)), 'CRYPTO:*') ?? null : null;
+  const crypto = new Set(input.ops.filter((o) => o.assetClass === 'crypto').map((o) => o.assetId));
+  const cryptoFrom = input.settings.fifoStartDates?.['CRYPTO:*'] ? fifoStartFor(new Map(Object.entries(input.settings.fifoStartDates)), 'CRYPTO:*') ?? null
+    : auto && complete ? assets.find((a) => crypto.has(a.assetId))?.from ?? null : null;
   return { from, cryptoFrom, complete, assets, closedAssets: [...traded].filter((id) => !held.has(id) && !required.has(id)).length, auto: result.fifoAuto };
 }
 

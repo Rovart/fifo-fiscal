@@ -6,7 +6,7 @@ import type { Asset, Operation, Settings } from '../shared/types.ts';
 import { D } from '../shared/decimal.ts';
 import { fifoOperations } from '../shared/fifo-start.ts';
 import { ProfileError, allOps, createProfile, currentProfileId, getHistory, getOp, getSettings, latestRateDate, listAssets, listProfiles, profileDbPath, rateAt, renameProfile, saveAsset, saveSettings, withProfile } from './db.ts';
-import { isNeutralFx } from './engine/report.ts';
+import { filedAndSettled, isNeutralFx } from './engine/report.ts';
 import { fifoHistory } from './engine/history.ts';
 import { runEngine } from './engine/fifo.ts';
 import { exportYear } from './export.ts';
@@ -81,7 +81,7 @@ app.get('/api/operations', (c) => {
   const problem = new Map<string, string>();
   const calculated = new Map(calculationOps().map((o) => [o.id, o]));
   const historical = new Map(fifoOperations(withAssetMeta(allOps(), assets), getSettings()).map((o) => [o.id, o]));
-  for (const i of res.issues) if (i.opId && i.severity !== 'info') problem.set(i.opId, i.severity);
+  for (const i of res.issues) if (i.opId && i.severity !== 'info' && !filedAndSettled(i, getSettings().lastFiledYear)) problem.set(i.opId, i.severity);
   let ops = allOps(q.flag === 'deleted').filter((o) => (q.flag === 'deleted' ? o.deleted : true));
   if (q.year) ops = ops.filter((o) => o.datetime.startsWith(q.year as string));
   if (q.broker) ops = ops.filter((o) => o.broker === q.broker);
@@ -185,13 +185,17 @@ app.put('/api/settings', async (c) => {
   const settings = (await c.req.json()) as Settings;
   if (settings.fifoAutoStart !== undefined && typeof settings.fifoAutoStart !== 'boolean') throw new ValidationError('Revisa el inicio automático del FIFO.', null);
   if (settings.fifoConfirmedClosures !== undefined && (!settings.fifoConfirmedClosures || typeof settings.fifoConfirmedClosures !== 'object' || Array.isArray(settings.fifoConfirmedClosures)
-    || Object.entries(settings.fifoConfirmedClosures).some(([id, c]) => !/^[A-Z0-9._-]+$/.test(id) || !c || !/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || typeof c.note !== 'string' || !c.note.trim()))) throw new ValidationError('Revisa los cierres de inventario confirmados.', null);
+    || Object.entries(settings.fifoConfirmedClosures).some(([id, c]) => !(/^[A-Z0-9._-]+$/.test(id) || id === 'CRYPTO:*') || !c || !/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || typeof c.note !== 'string' || !c.note.trim()))) throw new ValidationError('Revisa los cierres de inventario confirmados.', null);
   const starts = settings.fifoStartDates;
   if (starts !== undefined && (!starts || typeof starts !== 'object' || Array.isArray(starts) || Object.entries(starts).some(([id, date]) => {
     if (!/^[A-Z0-9:*._-]+$/.test(id) || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return true;
     const time = Date.parse(`${date}T12:00:00Z`);
     return !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date;
   }))) throw new ValidationError('Revisa las fechas de inicio del FIFO.', null);
+  const cover = settings.shortfallCover;
+  if (cover != null && (typeof cover !== 'object' || ![cover.from, cover.to].every((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) || cover.from > cover.to)) {
+    throw new ValidationError('Revisa las fechas de las ventas sin compra previa.', null);
+  }
   saveSettings({ ...getSettings(), ...settings });
   return c.json(getSettings());
 });

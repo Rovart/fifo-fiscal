@@ -194,7 +194,8 @@ export function Review() {
   const { data } = useApi<Checks>(`/checks?year=${year}`, `${tick}`);
 
   const groups = useMemo(() => {
-    const issues = data?.issues ?? [];
+    const all = data?.issues ?? [];
+    const issues = all.filter((i) => i.severity !== 'info');
     const reasons = new Map<string, Issue[]>();
     for (const i of issues) {
       if (i.code !== 'needs_review' || !i.reason) continue;
@@ -205,7 +206,7 @@ export function Review() {
       lots: issues.filter((i) => i.code === 'missing_lots'),
       fix: issues.filter((i) => i.severity === 'error' && !['missing_valuation', 'missing_lots'].includes(i.code)),
       reasons: [...reasons.entries()].sort((a, b) => b[1].length - a[1].length),
-      infos: issues.filter((i) => i.severity === 'info'),
+      infos: all.filter((i) => i.severity === 'info'),
     };
   }, [data]);
 

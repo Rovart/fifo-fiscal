@@ -4,7 +4,7 @@ import { reconcile } from '../shared/reconcile.ts';
 import type { Operation } from '../shared/types.ts';
 import { addHistory, allOps, currentProfileId, db, getOp, listAssets, putOp, withProfile } from './db.ts';
 import { marketReference, type DividendReference, type MarketReference } from './reference.ts';
-import { setAssetIsin } from './service.ts';
+import { setAssetIsin, valueImportedCrypto } from './service.ts';
 
 export function heldBefore(ops: Operation[], assetId: string, broker: string, date: string): Decimal {
   let held = D(0);
@@ -150,6 +150,7 @@ export function scheduleResolution(force = false) {
   void withProfile(id, async () => {
     const resolved = await resolveWarnings();
     if (!allOps().length) return;
+    await valueImportedCrypto();
     const { performance, refreshPriceHistory } = await import('./history.ts');
     const prices = performance();
     if (resolved.identities || !prices.hasHistory || prices.missingPrices.length) await refreshPriceHistory();

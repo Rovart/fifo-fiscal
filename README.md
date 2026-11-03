@@ -1,6 +1,6 @@
 # FIFO Fiscal
 
-Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut y Coinbase. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Consulta automáticamente tipos del BCE, cotizaciones e históricos públicos, identificadores y repartos publicados para completar las importaciones. A los proveedores solo se envían identificadores y símbolos públicos, nunca nombres de personas, documentos, cantidades ni importes de la cartera.
+Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Consulta automáticamente tipos del BCE, cotizaciones e históricos públicos, identificadores y repartos publicados para completar las importaciones. A los proveedores solo se envían identificadores y símbolos públicos, nunca nombres de personas, documentos, cantidades ni importes de la cartera.
 
 > Es un apoyo de cálculo, no asesoramiento fiscal. Revisa el resultado en Renta Web. Los criterios y sus fuentes están en [docs/criterios.md](docs/criterios.md).
 
@@ -33,10 +33,11 @@ La barra lateral sigue tres pasos:
    - Kraken: `Ledgers`, no `Trades`.
    - Revolut: el extracto de cuenta de Inversiones y el de Cripto. Los CSV antiguos solo dan ticker. Se identifica el ISIN automáticamente cuando hay una correspondencia inequívoca, se aprovecha la columna ISIN si existe y se resuelve la bolsa de los ETF europeos. Un ADR mantiene su propio ISIN.
    - Coinbase: «Transaction history», desde el principio.
+   - CoinTracking: la lista de operaciones (Introducir monedas → Exportar → CSV), no el informe fiscal. Las filas de Kraken o Coinbase que ya cubren sus propios extractos se omiten, así que conviene añadir esos extractos antes. Las permutas entre criptos se valoran a 1 USD si una parte es una stablecoin en dólares y, si no, con el precio de Kraken del activo entregado o del recibido; la valoración se hace sola en segundo plano. Lo que trae CoinTracking cuenta como una cartera externa: un depósito posterior en Kraken o Coinbase sale primero de ahí.
 2. **Revisar**: completa automáticamente los datos contrastables y muestra lo que aún necesita información. Los dividendos netos pueden conciliarse con el reparto publicado y la cantidad con derecho en la fecha exdividendo. El bruto se reconstruye con esos datos y la retención por diferencia, conservando el neto importado. Se exige coincidencia de fecha, divisa e importe (un céntimo, más la diferencia comprobable entre 4 y 6 decimales por acción, con límite total de cinco céntimos). No se aplica un porcentaje supuesto al neto. Los importes reconstruidos y sus fuentes aparecen en el movimiento; un justificante del bróker permite corregirlos si su redondeo difiere. Las ediciones manuales se respetan. Los avisos de ingresos antiguos no se arrastran a otro ejercicio por vender después el mismo activo.
 3. **Mi Renta**: copia cada importe a su casilla con un clic y marca lo que ya has pasado a Renta Web. También exporta a Excel o PDF.
 
-Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
+Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá; los saldos a cero se ocultan salvo que actives el interruptor), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
 
 Reimportar un fichero es seguro: lo repetido se ignora y tus ediciones se conservan. Si quitas un documento, sus movimientos duplicados siguen disponibles mientras aparezcan en otro documento que conserves.
 
@@ -46,7 +47,9 @@ En **Ajustes → Recalcular FIFO**, un botón comprueba automáticamente desde d
 
 Los movimientos de ciclos anteriores siguen visibles en Movimientos, Resultados, Desempeño, Mi Renta y las exportaciones. El botón no los elimina ni los excluye de sus ejercicios: solo identifica qué antecedentes necesita el FIFO actual. Los movimientos antiguos se marcan como «Ciclo anterior». Los saldos en divisa mantienen sus antecedentes. Una retirada a una cartera externa sigue siendo propiedad del titular: que un exchange llegue a cero no prueba por sí solo que se haya vendido todo. Si faltan retornos o costes, conserva el historial necesario sin inventarlos.
 
-Si el titular confirma un saldo total cero en un mes ya declarado, se puede registrar esa confirmación como dato de inventario (`fifoConfirmedClosures`, con mes y motivo). El inventario se pone a cero al cierre de ese mes, sin crear una venta, alterar las ganancias anteriores ni ocultar sus movimientos. El recálculo deduce el siguiente ciclo a partir de las operaciones posteriores. La confirmación debe referirse también a las carteras externas y no puede eliminar resultados de años sin presentar.
+Un resto mínimo tras el último movimiento de un activo (como mucho el 0,1 % de lo que movió y con un coste inferior a 1 €, por ejemplo fracciones de acción o restos de un exchange) se cierra solo, sin efecto fiscal, para que no quede como saldo.
+
+Si el titular confirma un saldo total cero en un mes ya declarado, se puede registrar esa confirmación como dato de inventario (`fifoConfirmedClosures`, con mes y motivo, por activo o con `CRYPTO:*` para todas las criptomonedas). Para reproducir un informe antiguo de CoinTracking, `shortfallCover` (`from`, `to`) hace que las ventas de cripto de ese periodo hechas antes de su compra tomen el coste de las compras siguientes; fuera de él cuentan con coste 0 y aviso. El inventario se pone a cero al cierre de ese mes, sin crear una venta, alterar las ganancias anteriores ni ocultar sus movimientos. El recálculo deduce el siguiente ciclo a partir de las operaciones posteriores. La confirmación debe referirse también a las carteras externas y no puede eliminar resultados de años sin presentar.
 
 ## Edición y cuadre
 
@@ -68,7 +71,7 @@ Importe EUR ± Comisión ± Otros      = Total
 ```
 shared/           Tipos, decimales y lógica de cuadre (la usan servidor y cliente)
 server/engine/    Motor FIFO, regla de recompra, divisas e informe por casillas
-server/importers/ DEGIRO, Trade Republic, Kraken, Revolut y Coinbase
+server/importers/ DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking
 server/           API local, SQLite, tipos del BCE y exportación a Excel
 client/           Interfaz en React
 tests/            Pruebas del motor, importadores y flujo completo

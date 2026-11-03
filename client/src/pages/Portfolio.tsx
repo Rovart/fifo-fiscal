@@ -15,6 +15,7 @@ const GROUPS: { id: DisposalClass; label: string }[] = [
 ];
 
 const brokerName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BROKER_LABEL[b as Broker] ?? b);
+const ZERO_KEY = 'cartera-saldos-cero';
 
 interface Quote { symbol: string | null; currency: string | null; price: string | null; priceEur: string | null; at: string | null; fetchedAt: string | null }
 
@@ -25,9 +26,18 @@ export function Portfolio() {
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showZero, setShowZero] = useState(() => { try { return localStorage.getItem(ZERO_KEY) === '1'; } catch { return false; } });
   if (!data) return <><PageHead title="Cartera" /><Loading /></>;
-  const positions = data.positions.filter((p) => D(p.quantity).gt(0));
-  if (positions.length === 0) {
+  const held = data.positions.filter((p) => D(p.quantity).gt(0));
+  // Un saldo que se ve como 0 o que no llega a un céntimo no es una posición que interese ver.
+  const isZero = (p: Position) => {
+    const priceEur = p.class === 'fx' ? null : data.quotes[p.assetId]?.priceEur;
+    return D(p.quantity).toDecimalPlaces(8).isZero() || (D(p.costEur).abs().lt('0.01') && (!priceEur || D(p.quantity).times(D(priceEur)).lt('0.01')));
+  };
+  const zeroCount = held.filter(isZero).length;
+  const positions = showZero ? held : held.filter((p) => !isZero(p));
+  const toggleZero = (on: boolean) => { setShowZero(on); try { localStorage.setItem(ZERO_KEY, on ? '1' : '0'); } catch { /* Solo para esta visita. */ } };
+  if (held.length === 0) {
     return (
       <>
         <PageHead title="Cartera" />
@@ -63,8 +73,15 @@ export function Portfolio() {
   return (
     <>
       <PageHead title="Cartera" sub={fetched ? `Precios de Yahoo del ${new Date(fetched).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}` : undefined}>
+        {zeroCount > 0 && (
+          <label className="inline small muted">
+            Saldos a cero ({zeroCount})
+            <input type="checkbox" role="switch" className="switch" checked={showZero} onChange={(e) => toggleZero(e.target.checked)} />
+          </label>
+        )}
         <button className="btn" disabled={busy} onClick={() => void refresh()}><RefreshCw size={15} /> {busy ? 'Buscando…' : fetched ? 'Actualizar precios' : 'Ver precios actuales'}</button>
       </PageHead>
+      {positions.length === 0 && <div className="card"><Empty icon={Wallet} title="Solo quedan saldos a cero" /></div>}
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
       {missing.length > 0 && <Callout tone="warn">Sin precio: {missing.map(niceName).join(', ')}.</Callout>}
       {data.balanceDifferences.length > 0 && <Callout tone="warn">{data.balanceDifferences.map((p) => `${p.assetId}: ${qty(p.declared)} declarados · ${qty(p.computed)} en extractos`).join('. ')}. <button className="link" onClick={() => go('review')}>Conciliar saldo</button></Callout>}
