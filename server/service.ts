@@ -1,9 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { D, Decimal, cents, toStr } from '../shared/decimal.ts';
 import { applyEdit, expectedTotal, reconcile } from '../shared/reconcile.ts';
 import type { Asset, AssetClass, Broker, Market, Operation, Settings , Disposal, SaleSimulation, SalesSimulation } from '../shared/types.ts';
 import {
-  addHistory, allOps, bump, db, getOp, getSettings, hasSourceKey, insertRates, latestRateDate, listAssets, putOp, rateAt, rev, saveAsset,
+  addHistory, allOps, bump, currentProfileId, db, getOp, getSettings, hasSourceKey, insertRates, latestRateDate, listAssets, putOp, rateAt, rev, saveAsset,
 } from './db.ts';
 import { runEngine } from './engine/fifo.ts';
 import { buildYearReport, issuesForYear, type YearReport } from './engine/report.ts';
@@ -42,13 +42,13 @@ export function brokerNames(): Record<string, { broker: Broker; name: string }[]
   return out;
 }
 
-let cache: { rev: number; result: ReturnType<typeof runEngine> } | null = null;
+let cache: { profile: string; rev: number; result: ReturnType<typeof runEngine> } | null = null;
 
 export function engine() {
-  if (cache?.rev === rev()) return cache.result;
+  if (cache?.profile === currentProfileId() && cache.rev === rev()) return cache.result;
   const assets = assetsMap();
   const result = runEngine({ ops: withAssetMeta(allOps(), assets), assets, settings: getSettings(), rateAt, today: today() });
-  cache = { rev: rev(), result };
+  cache = { profile: currentProfileId(), rev: rev(), result };
   return result;
 }
 
@@ -68,6 +68,8 @@ export interface ImportPreview {
   kinds: Record<string, number>;
   sample: Operation[];
   costs: number;
+  from: string | null;
+  to: string | null;
 }
 
 const isIsin = (id: string) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(id);
@@ -142,6 +144,8 @@ export function previewImport(text: string): { parsed: ParsedImport; preview: Im
       warnings: parsed.warnings, ignored: parsed.ignored, needsReview: fresh.filter((o) => o.reviewReasons?.length).length,
       needsValue: fresh.filter((o) => !o.grossEur && !['split', 'isin_change', 'transfer_in', 'transfer_out'].includes(o.kind)).length,
       kinds, sample: fresh.slice(0, 8), costs: parsed.pendingCosts.length,
+      from: parsed.ops.map((o) => o.datetime.slice(0, 10)).sort()[0] ?? null,
+      to: parsed.ops.map((o) => o.datetime.slice(0, 10)).sort().at(-1) ?? null,
     },
   };
 }
@@ -163,7 +167,7 @@ function attachCost(target: Operation, amount: Decimal, label: string, key: stri
 }
 
 /** Cuenta el ITF, TTF o stamp duty como mayor coste o menor valor de la operación a la que pertenece. */
-function resolveCosts(parsed: ParsedImport, importId: string, ops: Operation[]) {
+function resolveCosts(parsed: Pick<ParsedImport, 'pendingCosts'>, importId: string, ops: Operation[]) {
   let attached = 0, orphan = 0;
   const trades = ops.filter((o) => o.kind === 'buy' || o.kind === 'sell');
   const isLegacyApplied = db.prepare('SELECT 1 FROM applied_costs WHERE key = ?');
@@ -209,6 +213,9 @@ function resolveCosts(parsed: ParsedImport, importId: string, ops: Operation[]) 
 
 export function commitImport(file: string, text: string) {
   const { parsed, preview } = previewImport(text);
+  const hash = createHash('sha256').update(text).digest('hex');
+  const existing = db.prepare('SELECT id FROM imports WHERE content_hash = ? AND file = ?').get(hash, file) as { id: string } | undefined;
+  if (existing) return { importId: existing.id, ...preview, newOps: 0, sample: undefined, costsAttached: 0, costsOrphan: 0, alreadyImported: true };
   const importId = randomUUID();
   const assets = assetsMap();
   const fresh = parsed.ops.filter((o) => !o.sourceKey || !hasSourceKey(o.sourceKey));
@@ -223,11 +230,13 @@ export function commitImport(file: string, text: string) {
       addHistory(op.id, 'importada', null, op);
     }
     const costs = resolveCosts(parsed, importId, allOps());
-    const upsert = db.prepare(`INSERT INTO balances (broker, asset_id, quantity, as_of, source) VALUES (?, ?, ?, ?, 'import')
-      ON CONFLICT(broker, asset_id) DO UPDATE SET quantity = excluded.quantity, as_of = excluded.as_of, source = excluded.source WHERE excluded.as_of >= balances.as_of OR balances.as_of IS NULL`);
-    for (const b of parsed.balances) upsert.run(b.broker, b.assetId, b.quantity, b.asOf);
-    db.prepare('INSERT INTO imports (id, at, file, broker, format, summary) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(importId, new Date().toISOString(), file, parsed.broker, parsed.format, JSON.stringify({ ...preview, sample: undefined, costs }));
+    db.prepare('INSERT INTO imports (id, at, file, broker, format, summary, content_hash, costs, balances) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(importId, new Date().toISOString(), file, parsed.broker, parsed.format, JSON.stringify({ ...preview, sample: undefined, costs }), hash, JSON.stringify(parsed.pendingCosts), JSON.stringify(parsed.balances));
+    // Recuerda también los duplicados omitidos: otra fuente puede conservar el movimiento.
+    const link = db.prepare('INSERT OR IGNORE INTO import_operations (import_id, op_id) SELECT ?, id FROM operations WHERE source_key = ?');
+    for (const op of parsed.ops) if (op.sourceKey) link.run(importId, op.sourceKey);
+    for (const cost of parsed.pendingCosts) link.run(importId, cost.sourceKey);
+    rebuildImportedBalances(parsed.broker);
     db.exec('COMMIT');
     bump();
     return { importId, ...preview, sample: undefined, costsAttached: costs.attached, costsOrphan: costs.orphan };
@@ -253,14 +262,34 @@ function registerAsset(assets: Map<string, Asset>, id: string, name: string, kla
   saveAsset(a);
 }
 
-export function undoImport(importId: string): number {
+export function listImports() {
+  const rows = db.prepare(`SELECT i.id, i.at, i.file, i.broker, i.format, i.summary,
+    (SELECT COUNT(*) FROM import_operations io JOIN operations o ON o.id = io.op_id WHERE io.import_id = i.id AND o.deleted = 0) AS operations
+    FROM imports i ORDER BY i.at DESC, i.rowid DESC`).all() as unknown as { id: string; at: string; file: string; broker: Broker; format: string; summary: string; operations: number }[];
+  return rows.map((r) => ({ ...r, summary: JSON.parse(r.summary) as Omit<ImportPreview, 'sample' | 'costs'> & { costs: { attached: number; orphan: number } } }));
+}
+
+function rebuildImportedBalances(broker: string) {
+  db.prepare("DELETE FROM balances WHERE broker = ? AND source = 'import'").run(broker);
+  const upsert = db.prepare(`INSERT INTO balances (broker, asset_id, quantity, as_of, source) VALUES (?, ?, ?, ?, 'import')
+    ON CONFLICT(broker, asset_id) DO UPDATE SET quantity = excluded.quantity, as_of = excluded.as_of, source = excluded.source
+    WHERE balances.source <> 'manual' AND (excluded.as_of >= balances.as_of OR balances.as_of IS NULL)`);
+  const rows = db.prepare('SELECT balances FROM imports WHERE broker = ? ORDER BY at, rowid').all(broker) as { balances: string }[];
+  for (const row of rows) for (const b of JSON.parse(row.balances) as ParsedImport['balances']) upsert.run(b.broker, b.assetId, b.quantity, b.asOf);
+}
+
+function undoImportInner(importId: string): number {
+  const imported = db.prepare('SELECT broker FROM imports WHERE id = ?').get(importId) as { broker: string } | undefined;
+  if (!imported) return 0;
+  const remainingCosts = db.prepare('SELECT id, costs FROM imports WHERE id <> ? AND broker = ? ORDER BY at, rowid').all(importId, imported.broker) as { id: string; costs: string }[];
+  const costOwners = new Map(remainingCosts.flatMap((r) => (JSON.parse(r.costs) as ParsedImport['pendingCosts']).map((c) => [c.sourceKey, r.id] as const)));
   // Quita de las operaciones de otros ficheros los tributos que aportó este.
-  for (const op of allOps().filter((o) => o.appliedCosts?.some((x) => x.importId === importId))) {
-    const mine = (op.appliedCosts ?? []).filter((x) => x.importId === importId);
+  for (const op of allOps(true).filter((o) => o.appliedCosts?.some((x) => x.importId === importId))) {
+    const mine = (op.appliedCosts ?? []).filter((x) => x.importId === importId && !costOwners.has(x.key));
     const next: Operation = {
       ...op,
       otherCostsEur: cents(mine.reduce((s, x) => s.minus(D(x.amountEur)), D(op.otherCostsEur))),
-      appliedCosts: (op.appliedCosts ?? []).filter((x) => x.importId !== importId),
+      appliedCosts: (op.appliedCosts ?? []).filter((x) => !mine.includes(x)).map((x) => x.importId === importId ? { ...x, importId: costOwners.get(x.key)! } : x),
     };
     next.totalEur = cents(expectedTotal(next));
     if (op.original) next.original = { ...op.original, otherCostsEur: next.otherCostsEur, totalEur: next.totalEur };
@@ -268,16 +297,53 @@ export function undoImport(importId: string): number {
     addHistory(op.id, 'tributo retirado al quitar su fichero', op, next);
   }
   db.prepare('DELETE FROM applied_costs').run();
-  const rows = db.prepare('SELECT id FROM operations WHERE import_id = ? AND deleted = 0').all(importId) as { id: string }[];
+  db.prepare('DELETE FROM import_operations WHERE import_id = ?').run(importId);
+  const owned = db.prepare('SELECT id FROM operations WHERE import_id = ?').all(importId) as { id: string }[];
+  const rows: { id: string }[] = [];
+  for (const row of owned) {
+    const owner = db.prepare('SELECT import_id FROM import_operations WHERE op_id = ? LIMIT 1').get(row.id) as { import_id: string } | undefined;
+    if (owner) {
+      const op = getOp(row.id)!;
+      putOp({ ...op, importId: owner.import_id, original: op.original ? { ...op.original, importId: owner.import_id } : op.original });
+    } else rows.push(row);
+  }
+  let removed = 0;
   for (const r of rows) {
     const op = getOp(r.id);
     if (!op) continue;
+    if (!op.deleted) removed++;
     putOp({ ...op, deleted: true });
     addHistory(op.id, 'importación deshecha', op, null);
   }
   db.prepare('UPDATE operations SET source_key = NULL WHERE import_id = ?').run(importId);
   db.prepare('DELETE FROM imports WHERE id = ?').run(importId);
-  return rows.length;
+  // Si se quitan las compras antes que Account, sus tributos siguen perteneciendo a Account.
+  for (const row of remainingCosts) resolveCosts({ pendingCosts: JSON.parse(row.costs) as ParsedImport['pendingCosts'] }, row.id, allOps());
+  rebuildImportedBalances(imported.broker);
+  bump();
+  return removed;
+}
+
+function importTransaction(action: () => number): number {
+  db.exec('BEGIN');
+  try {
+    const removed = action();
+    db.exec('COMMIT');
+    return removed;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    bump();
+    throw e;
+  }
+}
+
+export const undoImport = (importId: string): number => importTransaction(() => undoImportInner(importId));
+
+export function removeBrokerImports(broker: string): number {
+  return importTransaction(() => {
+    const ids = db.prepare('SELECT id FROM imports WHERE broker = ?').all(broker) as { id: string }[];
+    return ids.reduce((count, r) => count + undoImportInner(r.id), 0);
+  });
 }
 
 // ---- Edición ----

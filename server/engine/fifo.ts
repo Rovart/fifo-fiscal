@@ -464,7 +464,14 @@ export function runEngine(input: EngineInput): EngineResult {
       }
     }
 
-    const q = D(op.quantity);
+    let q = D(op.quantity);
+    // Revolut redondea las acciones fraccionadas a 8 decimales. No inventa una compra
+    // por una unidad del último decimal al cerrar la posición, si vale menos de medio céntimo.
+    if (op.broker === 'revolut' && op.kind === 'sell' && WASH_CLASSES.includes(klass) && isNum(op.totalEur)) {
+      const held = holdings(op.assetId);
+      const excess = q.minus(held);
+      if (held.gt(0) && excess.gt(0) && excess.lte('0.00000001') && D(op.totalEur).abs().div(q).times(excess).lte('0.005')) q = held;
+    }
     const total = D(op.totalEur);
     const rate = isNum(op.fxRate) && D(op.fxRate).gt(0) ? D(op.fxRate) : null;
     const date = dateOf(op.datetime);

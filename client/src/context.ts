@@ -14,6 +14,7 @@ export interface AppCtx {
   toast: (message: string) => void;
   go: (page: Page) => void;
   openEditor: (op: Operation | null, prefill?: Partial<Operation>) => void;
+  switchProfile: (id: string) => void;
 }
 
 export const Ctx = createContext<AppCtx | null>(null);

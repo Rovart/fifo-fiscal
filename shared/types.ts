@@ -1,4 +1,5 @@
 export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'manual';
+export interface Profile { id: string; name: string }
 export type AssetClass = 'stock' | 'etf' | 'fund' | 'crypto' | 'bond' | 'other';
 export type Market = 'eu' | 'us' | 'other';
 

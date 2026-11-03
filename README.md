@@ -25,7 +25,7 @@ Al empezar, en **Ajustes**, indica tu última renta presentada: lo anterior no s
 
 La barra lateral sigue tres pasos:
 
-1. **Subir datos**: arrastra los CSV. El bróker y el formato se detectan solos. Sube toda la historia desde tu primera compra, porque el FIFO la necesita.
+1. **Documentos**: arrastra uno o varios CSV. El bróker y el formato se detectan solos. Sube toda la historia desde tu primera compra, porque el FIFO la necesita. Los archivos se agrupan por exchange: puedes añadir más, quitar uno o retirar todos los de un exchange.
    - DEGIRO: `Transactions` y `Account`.
    - Trade Republic: «Exportación de transacciones».
    - Kraken: `Ledgers`, no `Trades`.
@@ -36,7 +36,9 @@ La barra lateral sigue tres pasos:
 
 Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
 
-Reimportar un fichero es seguro: lo repetido se ignora y tus ediciones se conservan.
+Reimportar un fichero es seguro: lo repetido se ignora y tus ediciones se conservan. Si quitas un documento, sus movimientos duplicados siguen disponibles mientras aparezcan en otro documento que conserves.
+
+El selector de cuenta de la barra lateral permite crear una cuenta para cada persona y cambiar entre ellas. Cada cuenta tiene documentos, movimientos, ajustes, FIFO y marcas de Renta independientes. Los datos existentes quedan en **Mi cuenta**.
 
 ## Edición y cuadre
 
@@ -66,4 +68,4 @@ tests/            Pruebas del motor, importadores y flujo completo
 
 ## Copia de seguridad
 
-Guarda `data/fifo.db`: contiene todas las operaciones y su historial. Está excluido de git para que tus datos no acaben en un repositorio.
+Guarda la carpeta `data/` completa. La cuenta original está en `data/fifo.db` y las adicionales en `data/profiles/`. Incluye las operaciones y su historial de todas las personas y está excluida de git. Haz la copia con la aplicación cerrada.

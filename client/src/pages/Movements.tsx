@@ -24,7 +24,7 @@ function detail(o: OpRow): string {
   if (o.kind === 'swap') return `${qty(o.quantity)} ${o.assetId} → ${qty(o.counterQuantity)} ${o.counterAsset ?? ''}`;
   if (o.kind === 'fx') return `${qty(o.quantity)} ${symbol(o.currency)} → ${qty(o.counterQuantity)} ${symbol(o.counterAsset)}`;
   if ((o.kind === 'buy' || o.kind === 'sell') && o.unitPrice) return `${qty(o.quantity)} × ${price(o.unitPrice)} ${symbol(o.currency)}`;
-  if (o.kind === 'staking' || o.kind === 'reward') return `${qty(o.quantity)} ${o.assetId}`;
+  if (o.kind === 'staking' || o.kind === 'reward' || o.kind === 'fee' && o.assetClass === 'crypto') return `${qty(o.quantity)} ${o.assetId}`;
   if (o.quantity && !o.grossEur) return `${qty(o.quantity)} ${o.assetClass === 'crypto' ? o.assetId : ''}`;
   return '';
 }
@@ -98,7 +98,7 @@ export function Movements() {
                     </div>
                     {d && <div className="mid">{d}</div>}
                     <div className="end">
-                      <div className="amount">{amount(o) || <span className="faint">{o.quantity && !o.totalEur && !['transfer_in', 'transfer_out', 'split', 'isin_change'].includes(o.kind) ? 'Sin precio' : ''}</span>}</div>
+                      <div className="amount">{amount(o) || <span className="faint">{o.quantity && !o.totalEur && !['transfer_in', 'transfer_out', 'split', 'isin_change', 'fee'].includes(o.kind) ? 'Sin precio' : ''}</span>}</div>
                     </div>
                   </button>
                 </div>

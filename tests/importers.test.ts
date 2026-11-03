@@ -224,7 +224,7 @@ describe('Kraken', () => {
     expect(by('staking')).toMatchObject({ assetId: 'ETH', quantity: '0.001', grossEur: null });
     expect(by('transfer_out')).toMatchObject({ assetId: 'BTC', quantity: '0.01' });
     expect(by('reward')).toMatchObject({ assetId: 'DOT', quantity: '5' });
-    expect(p.ops.find((o) => o.note?.includes('retirada'))).toMatchObject({ kind: 'sell', quantity: '0.0001', grossEur: null });
+    expect(p.ops.find((o) => o.note?.includes('retirada'))).toMatchObject({ kind: 'fee', feeClass: 'non_deductible', quantity: '0.0001', grossEur: null });
     expect(p.warnings.some((w) => w.includes('Margen'))).toBe(true);
   });
   it('recoge el saldo final para el cuadre', () => {

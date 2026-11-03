@@ -8,7 +8,7 @@ Normativa y numeración de casillas revisadas el 2 de noviembre de 2026 para el 
 - **Nombre**: cada ISIN se muestra con el primer nombre importado, porque cada bróker lo llama a su manera. Si otro bróker usa uno muy distinto, Cartera lo indica. Cambiarlo en un movimiento lo cambia en todos.
 - Coste: importe más gastos y tributos inherentes (comisión, AutoFX, ITF, TTF). Transmisión: importe menos gastos (art. 35).
 - Las fechas se imputan en hora de España. Kraken y Trade Republic exportan en UTC y se convierten.
-- Las transferencias entre monederos no consumen lotes. Una comisión de retirada pagada en cripto es una transmisión a valor de mercado.
+- Las transferencias entre monederos propios no generan ventas ni consumen lotes. La comisión de esa retirada se registra como gasto no deducible y reduce las unidades sin generar una ganancia o pérdida fiscal. Se distingue de los gastos inherentes a una compraventa o permuta, que ajustan su valor de adquisición o transmisión ([DGT V0648-24](https://petete.tributos.hacienda.gob.es/consultas/?num_consulta=V0648-24), [texto reproducido](https://bm.consulting/es/consultas-vinculantes/V0648-24/)).
 - Si hay compras y ventas a la misma hora exacta, se ordenan primero las compras.
 
 ## Regla de recompra (art. 33.5.f y g)

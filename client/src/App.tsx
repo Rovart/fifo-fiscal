@@ -1,7 +1,8 @@
 import { BarChart3, Check, CircleHelp, Home as HomeIcon, ListOrdered, Settings as SettingsIcon, Wallet, TrendingUp } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Operation } from '../../shared/types.ts';
-import { api, type AppState } from './api.ts';
+import { api, getProfileId, selectProfile, type AppState } from './api.ts';
+import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
 import { Home } from './pages/Home.tsx';
@@ -22,6 +23,12 @@ const fromHash = (): Page => {
 };
 
 export function App() {
+  const [profileId, setProfileId] = useState(getProfileId);
+  const switchProfile = useCallback((id: string) => { selectProfile(id); setProfileId(id); }, []);
+  return <ProfileApp key={profileId} profileId={profileId} switchProfile={switchProfile} />;
+}
+
+function ProfileApp({ profileId, switchProfile }: { profileId: string; switchProfile: (id: string) => void }) {
   const [page, setPage] = useState<Page>(fromHash);
   const [state, setState] = useState<AppState | null>(null);
   const [year, setYear] = useState<number | null>(null);
@@ -33,8 +40,10 @@ export function App() {
   const hadData = useRef(false);
 
   useEffect(() => {
-    api<AppState>('/state')
+    let active = true;
+    api<AppState>('/state', { profileId })
       .then((s) => {
+        if (!active) return;
         setState(s);
         setLoadError(null);
         setYear((y) => {
@@ -46,8 +55,9 @@ export function App() {
           return s.years.includes(prev) ? prev : (s.years[s.years.length - 1] as number);
         });
       })
-      .catch((e: Error) => setLoadError(e.message));
-  }, [tick]);
+      .catch((e: Error) => { if (active) setLoadError(e.message); });
+    return () => { active = false; };
+  }, [tick, profileId]);
 
   useEffect(() => { if (location.hash.slice(1) !== page) location.hash = page; }, [page]);
   useEffect(() => {
@@ -68,9 +78,10 @@ export function App() {
     toast: showToast,
     go: (p) => { setPage(p); window.scrollTo(0, 0); },
     openEditor: (op, prefill) => setEditor({ op, prefill }),
-  } : null), [state, year, tick, showToast]);
+    switchProfile,
+  } : null), [state, year, tick, showToast, switchProfile]);
 
-  if (loadError) return <div className="main"><div className="callout error"><div className="body">No se puede conectar con la aplicación. Vuelve a arrancarla con <code>npm start</code>.</div></div></div>;
+  if (loadError) return <div className="main"><div className="callout error"><div className="body">{loadError}</div><button className="btn" onClick={() => profileId !== 'default' ? switchProfile('default') : setTick((t) => t + 1)}>Volver a intentar</button></div></div>;
   if (!ctx || !state) return null;
 
   const hasData = state.counts.operations > 0;
@@ -88,9 +99,10 @@ export function App() {
       <div className="layout">
         <nav className="side" aria-label="Secciones">
           <div className="brand"><span className="brand-mark">F</span>FIFO Fiscal</div>
+          <ProfileSwitcher />
           <NavBtn id="home"><HomeIcon size={18} /> Inicio</NavBtn>
           <div className="nav-group">Tu declaración</div>
-          <NavBtn id="upload"><Step n={1} done={hasData} /> Subir datos</NavBtn>
+          <NavBtn id="upload"><Step n={1} done={hasData} /> Documentos</NavBtn>
           <NavBtn id="review">
             <Step n={2} done={hasData && pending === 0} /> <span className="grow">Revisar</span>
             {pending > 0 && <span className={`badge ${yearCounts.errors === 0 ? 'soft' : ''}`}>{pending > 99 ? '99+' : pending}</span>}

@@ -88,27 +88,28 @@ function SectionEntries({ s, doneSet, toggle }: { s: FormSection; doneSet: Set<s
   );
 }
 
-const loadDone = (year: number): Set<string> => {
+const doneKey = (year: number, profileId: string) => profileId === 'default' ? `renta-hecho-${year}` : `renta-hecho-${profileId}-${year}`;
+const loadDone = (year: number, profileId: string): Set<string> => {
   try {
-    return new Set(JSON.parse(localStorage.getItem(`renta-hecho-${year}`) ?? '[]') as string[]);
+    return new Set(JSON.parse(localStorage.getItem(doneKey(year, profileId)) ?? '[]') as string[]);
   } catch {
     return new Set();
   }
 };
 
 export function Renta() {
-  const { year, tick, go } = useApp();
+  const { year, tick, go, state: { profileId } } = useApp();
   const { data: rep } = useApi<YearReport>(`/report/${year}`, `${year}-${tick}`);
   // undefined: se abre solo lo siguiente por copiar. null: el usuario lo ha cerrado todo.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
-  const [doneSet, setDoneSet] = useState<Set<string>>(() => loadDone(year));
-  useEffect(() => { setDoneSet(loadDone(year)); setPicked(undefined); }, [year]);
+  const [doneSet, setDoneSet] = useState<Set<string>>(() => loadDone(year, profileId));
+  useEffect(() => { setDoneSet(loadDone(year, profileId)); setPicked(undefined); }, [year, profileId]);
 
   const toggle = (id: string) => {
     setDoneSet((old) => {
       const n = new Set(old);
       if (n.has(id)) n.delete(id); else n.add(id);
-      try { localStorage.setItem(`renta-hecho-${year}`, JSON.stringify([...n])); } catch { /* sin almacenamiento, solo dura esta visita */ }
+      try { localStorage.setItem(doneKey(year, profileId), JSON.stringify([...n])); } catch { /* sin almacenamiento, solo dura esta visita */ }
       return n;
     });
   };
@@ -143,7 +144,7 @@ export function Renta() {
   return (
     <>
       <PageHead title={`Mi Renta ${year}`} sub={`Se presenta en ${year + 1}.`} year>
-        <a className="btn" href={`/api/export/${year}`}><FileSpreadsheet size={16} /> Excel</a>
+        <a className="btn" href={`/api/export/${year}?profile=${encodeURIComponent(profileId)}`}><FileSpreadsheet size={16} /> Excel</a>
         <button className="btn icon" onClick={() => window.print()} aria-label="Imprimir o guardar en PDF" title="Imprimir o guardar en PDF"><Printer size={16} /></button>
       </PageHead>
 

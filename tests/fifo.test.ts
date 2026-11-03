@@ -41,6 +41,41 @@ describe('FIFO', () => {
     expect(r.issues.some((i) => i.code === 'missing_lots' && i.severity === 'error')).toBe(true);
   });
 
+  it('tolera el último decimal de Revolut al cerrar acciones y conserva los importes', () => {
+    const r = run([
+      trade('buy', '2025-01-02', '10.12345678', '100', { broker: 'revolut' }),
+      trade('sell', '2025-02-03', '10', '110', { broker: 'revolut' }),
+      trade('sell', '2025-02-04', '0.12345679', '120', { broker: 'revolut' }),
+    ]);
+    expect(r.issues.filter((i) => i.code === 'missing_lots')).toEqual([]);
+    expect(r.disposals.at(-1)!.shortfall).toBe('0');
+    expect(money(r.disposals.at(-1)!.proceedsEur)).toBe(14.81);
+    expect(money(r.disposals.at(-1)!.matches[0]!.proceedsEur)).toBe(14.81);
+    expect(r.positions).toEqual([]);
+  });
+
+  it('sigue avisando de compras faltantes reales y de cantidades pequeñas de cripto', () => {
+    for (const extra of [{ broker: 'revolut' as const }, { broker: 'revolut' as const, assetClass: 'crypto' as const }]) {
+      const qty = extra.assetClass === 'crypto' ? '0.00000001' : '0.000001';
+      const r = run([
+        trade('buy', '2025-01-01', '1', '100', extra),
+        trade('sell', '2025-02-01', D(1).plus(qty).toFixed(), '100', extra),
+      ]);
+      expect(r.issues.some((i) => i.code === 'missing_lots')).toBe(true);
+    }
+  });
+
+  it('los traspasos y sus comisiones en cripto no generan ventas ni necesitan precio fiscal', () => {
+    const crypto = { assetId: 'BTC', assetName: 'Bitcoin', assetClass: 'crypto' as const, broker: 'kraken' as const };
+    const fee: Operation = { ...trade('buy', '2025-02-01', '0.01', '0', crypto), kind: 'fee', feeClass: 'non_deductible', unitPrice: null, grossLocal: null, grossEur: null, totalEur: null };
+    const transfer: Operation = { ...fee, id: 'transfer', kind: 'transfer_out', quantity: '0.5' };
+    const r = run([trade('buy', '2025-01-01', '1', '100', crypto), fee, transfer]);
+    expect(r.disposals).toEqual([]);
+    expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
+    expect(r.positions[0]).toMatchObject({ quantity: '0.99', costEur: '99', byBroker: { kraken: '0.49', externo: '0.5' } });
+    expect(r.fees[0]).toMatchObject({ feeClass: 'non_deductible' });
+  });
+
   it('split y liberadas conservan coste y fecha', () => {
     const split: Operation = { ...trade('buy', '2024-06-01', '10', '0'), kind: 'split', unitPrice: null, grossLocal: null, grossEur: null, totalEur: null };
     const r = run([trade('buy', '2024-01-10', '10', '100'), split, trade('sell', '2025-01-10', '20', '60')]);

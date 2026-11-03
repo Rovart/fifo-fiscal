@@ -19,7 +19,7 @@ interface Checks {
 const PREVIEW = 4;
 
 function MissingPrices({ count }: { count: number }) {
-  const { changed } = useApp();
+  const { changed, state: { profileId } } = useApp();
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
   const [failed, setFailed] = useState<string[]>([]);
@@ -31,7 +31,7 @@ function MissingPrices({ count }: { count: number }) {
       let done = 0, remaining = 1;
       const bad: string[] = [];
       while (remaining > 0) {
-        const r = await api<{ done: number; failed: string[]; remaining: number }>('/prices/resolve', { method: 'POST' });
+        const r = await api<{ done: number; failed: string[]; remaining: number }>('/prices/resolve', { method: 'POST', profileId });
         done += r.done;
         bad.push(...r.failed);
         remaining = r.remaining;
@@ -122,23 +122,31 @@ function ReasonGroup({ reason, issues }: { reason: string; issues: Issue[] }) {
   const { changed, openEditor } = useApp();
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const title = reason.startsWith('Revolut no da el ISIN.') ? 'ISIN de los valores de Revolut'
+    : reason.startsWith('Revolut da el dividendo ya neto.') ? 'Dividendos de Revolut: bruto y retención' : reason;
   const shown = all ? issues : issues.slice(0, PREVIEW);
   const confirm = async (ids: string[]) => {
     setBusy(true);
-    await api('/review/confirm', { method: 'POST', body: { ids, reason } });
-    setBusy(false);
-    changed(ids.length === 1 ? 'Marcado como revisado' : `${ids.length} marcados como revisados`);
+    setError('');
+    try {
+      await api('/review/confirm', { method: 'POST', body: { ids, reason } });
+      changed(ids.length === 1 ? 'Marcado como revisado' : `${ids.length} marcados como revisados`);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   };
   return (
     <div className="card flush">
       <div className="next" style={{ alignItems: 'flex-start' }}>
         <div className="avatar warn"><CircleDashed size={18} /></div>
         <div className="body">
-          <div className="strong">{reason}</div>
+          <div className="strong">{title}</div>
           <div className="small muted">{issues.length === 1 ? '1 movimiento' : `${issues.length} movimientos`}</div>
+          {title !== reason && <div className="small muted">{reason.startsWith('Revolut no da el ISIN.') ? 'Añade su ISIN en Ajustes si también los tienes en otro bróker.' : 'Comprueba el bruto y la retención con el informe anual.'}</div>}
         </div>
         {issues.length > 1 && <button className="btn" disabled={busy} onClick={() => void confirm(issues.map((i) => i.opId as string))}>Todos bien</button>}
       </div>
+      {error && <div className="upload-detail small loss" role="alert">{error}</div>}
       <div className="list" style={{ borderTop: '1px solid var(--hairline)' }}>
         {shown.map((i) => (
           <div className="item" key={i.opId}>

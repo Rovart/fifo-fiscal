@@ -12,6 +12,6 @@ export function useApi<T>(path: string | null, tick: string | number = 0) {
       .then((d) => { if (id === latest.current) { setData(d); setError(null); } })
       .catch((e: Error) => { if (id === latest.current) setError(e.message); });
   }, [path]);
-  useEffect(load, [load, tick]);
+  useEffect(() => { load(); return () => { latest.current++; }; }, [load, tick]);
   return { data, error, reload: load };
 }

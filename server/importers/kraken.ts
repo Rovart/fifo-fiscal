@@ -129,10 +129,10 @@ export function parseKrakenLedger(headers: string[], rows: string[][], rate: Rat
           op.quantity = toStr(qty);
           add(op);
           if (!g.fee.isZero()) {
-            // La comisión de red en cripto transmite esas unidades a valor de mercado.
-            const fee = baseOp({ broker: 'kraken', kind: 'sell', datetime: g.dt, assetId: g.asset, assetName: cryptoName(g.asset), assetClass: 'crypto', sourceKey: keys.key('kr-netfee', g.txid), note: 'Comisión de retirada pagada en cripto' });
-            fee.feeEur = '0';
-            if (!setValue(fee, g.fee, usdToEur(g.feeUsd, g.dt.slice(0, 10)))) review(fee, 'Comisión de retirada pagada en cripto: cuenta como una pequeña venta.');
+            // DGT V0648-24: la comisión de un traspaso entre monederos propios no tiene efecto en IRPF.
+            const fee = baseOp({ broker: 'kraken', kind: 'fee', datetime: g.dt, assetId: g.asset, assetName: cryptoName(g.asset), assetClass: 'crypto', sourceKey: keys.key('kr-netfee', g.txid), note: 'Comisión de retirada pagada en cripto' });
+            fee.feeClass = 'non_deductible';
+            setValue(fee, g.fee, usdToEur(g.feeUsd, g.dt.slice(0, 10)));
             add(fee);
           }
         }

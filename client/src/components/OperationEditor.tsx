@@ -65,6 +65,14 @@ function rowsFor(op: Operation): Row[] {
         { field: 'grossEur', label: 'Valor', unit: '€', total: true, money: true },
       ];
     case 'fee':
+      if (op.assetClass === 'crypto') return [
+        { field: 'quantity', label: 'Comisión pagada', unit: op.assetId },
+        ...(isNum(op.grossEur) ? [{ field: 'grossLocal', label: 'Valor en euros', unit: '€', money: true } as Row] : []),
+      ];
+      return [
+        { field: 'grossLocal', label: 'Importe', unit: cur, total: !foreign, money: true },
+        ...fxRows('Importe en euros'),
+      ];
     case 'deposit':
     case 'withdrawal':
       return [

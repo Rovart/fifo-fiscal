@@ -108,7 +108,11 @@ export function reconcile(op: Operation, toleranceEur: Decimal.Value = '0.02'): 
       add('Cantidad × Precio = Valor EUR', v, D(op.grossEur), [{ field: 'grossEur', value: cents(v), label: 'Ajustar valor' }]);
       add('Valor EUR = Total', D(op.grossEur), D(op.totalEur), [{ field: 'totalEur', value: cents(D(op.grossEur)), label: 'Ajustar total' }]);
     }
+  } else if (kind === 'fee' && op.assetClass === 'crypto' && !isNum(op.grossLocal) && !isNum(op.grossEur) && !isNum(op.totalEur)) {
+    // Las unidades de una comisión de red bastan para cuadrar el saldo; no exige valor fiscal.
+    need('quantity', 'Cantidad');
   } else if (EQ_CASH.includes(kind)) {
+    if (kind === 'fee' && op.assetClass === 'crypto') need('quantity', 'Cantidad');
     need('grossLocal', 'Importe'); need('grossEur', 'Importe en EUR'); need('totalEur', 'Total');
     if (op.currency !== 'EUR') need('fxRate', 'Tipo de cambio');
     if (missing.length === 0) {

@@ -1,5 +1,5 @@
-import { Check, ChevronLeft, ChevronRight, Copy as CopyIcon, type LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Check, ChevronLeft, ChevronRight, Copy as CopyIcon, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { parseLocaleNumber } from '../../../shared/decimal.ts';
 import { useApp } from '../context.ts';
@@ -35,6 +35,26 @@ export function PageHead({ title, sub, year, children }: { title: ReactNode; sub
 }
 
 export const Loading = () => <div className="skeleton" aria-label="Cargando" />;
+
+export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const id = useId();
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    ref.current?.showModal();
+    return () => { ref.current?.close(); previous?.focus(); };
+  }, []);
+  return createPortal(
+    <dialog ref={ref} className="dialog" aria-labelledby={id} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => {
+      if (e.target !== e.currentTarget) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose();
+    }}>
+      <div className="dialog-head"><h2 id={id}>{title}</h2><button type="button" className="btn quiet icon" aria-label="Cerrar" onClick={onClose}><X size={18} /></button></div>
+      {children}
+    </dialog>, document.body,
+  );
+}
 
 export function Empty({ icon: Icon, title, tone, children }: { icon?: LucideIcon; title: string; tone?: 'gain'; children?: ReactNode }) {
   return (

@@ -87,6 +87,23 @@ svg { flex-shrink: 0; }
 .page-head .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .page-sub { color: var(--ink-2); margin-top: 4px; }
 
+/* Cuentas */
+.profile-switch { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; margin: 0 0 14px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; cursor: pointer; text-align: left; }
+.profile-avatar { display: grid; place-items: center; width: 29px; height: 29px; flex-shrink: 0; border-radius: 9px; color: var(--accent); background: var(--accent-soft); font-weight: 600; font-size: 13px; }
+.profile-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 550; }
+.profile-list { display: flex; flex-direction: column; gap: 5px; max-height: 50vh; overflow-y: auto; }
+.profile-row { display: flex; align-items: center; gap: 5px; }
+.profile-option { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; background: transparent; border: 0; padding: 10px; border-radius: 11px; text-align: left; cursor: pointer; }
+.profile-option.on, .profile-option:hover { background: var(--surface-2); }
+.profile-option.on > svg { color: var(--gain); }
+.profile-new { width: 100%; margin-top: 16px; }
+.dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; background: var(--surface); color: var(--ink); border: 1px solid var(--hairline); border-radius: 20px; padding: 22px; box-shadow: var(--shadow-float); }
+.dialog::backdrop { background: rgb(10 10 8 / .4); backdrop-filter: blur(3px); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -6px -6px 16px 0; }
+.dialog-head h2 { font-size: 19px; }
+.dialog-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.removal-name { overflow-wrap: anywhere; margin-bottom: 8px; }
+
 /* Superficies */
 .card { background: var(--surface); border-radius: var(--r-l); box-shadow: var(--shadow-card); padding: 20px 22px; }
 .card.flush { padding: 0; }
@@ -213,6 +230,33 @@ select.input { appearance: none; padding-right: 32px; background-image: url("dat
 /* Subir */
 .drop { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 24px; text-align: center; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--shadow-card); border: 1.5px dashed var(--line); cursor: pointer; transition: background-color 120ms ease; }
 .drop.over { background: var(--accent-soft); border-color: var(--accent); }
+.drop.disabled { cursor: default; opacity: .65; }
+.drop.compact { flex-direction: row; text-align: left; padding: 22px 26px; gap: 16px; }
+.upload-icon { display: grid; place-items: center; width: 50px; height: 50px; flex-shrink: 0; background: var(--accent-soft); color: var(--accent); border-radius: 15px; }
+.upload-formats { color: var(--ink-3); font-size: 12px; margin-top: 8px; }
+.upload-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 22px; border-top: 1px solid var(--hairline); flex-wrap: wrap; }
+.upload-detail { padding: 0 22px 14px; }
+.file-name { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.exchange-list { gap: 12px; }
+.exchange-head { display: flex; align-items: center; padding: 8px 16px 8px 8px; gap: 8px; }
+.exchange-toggle { display: flex; align-items: center; flex: 1; gap: 14px; min-width: 0; text-align: left; background: none; border: 0; padding: 12px; border-radius: 12px; cursor: pointer; }
+.exchange-toggle .main-col { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.exchange-title { font-weight: 600; }
+.exchange-toggle .sub { font-size: 13px; color: var(--ink-2); }
+.exchange-avatar { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; font-size: 17px; font-weight: 650; background: var(--surface-2); }
+.broker-degiro { background: #eaf1fd; color: #2460aa; }
+.broker-trade_republic { background: #f1eee7; color: #38342d; }
+.broker-kraken { background: #efeafa; color: #6a42c4; }
+.broker-revolut { background: #e9edf4; color: #35425e; }
+.broker-coinbase { background: #e9efff; color: #265de3; }
+.exchange-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.exchange-chevron { display: flex; color: var(--ink-3); transition: transform 160ms ease; }
+.exchange-chevron.expanded { transform: rotate(90deg); }
+.exchange-documents { border-top: 1px solid var(--hairline); padding: 0 8px; }
+.exchange-documents .item { padding-left: 18px; padding-right: 10px; }
+.broker .head > .btn { margin-left: auto; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .broker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .broker { background: var(--surface); border-radius: var(--r-m); box-shadow: var(--shadow-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
 .broker .head { display: flex; align-items: center; gap: 10px; }
@@ -462,6 +506,16 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
 .stack-legend .num { text-align: right; }
 .stack-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 820px) {
+  .profile-switch { width: auto; max-width: 180px; flex-shrink: 0; margin: 0 4px 0 0; padding: 4px 8px; gap: 6px; }
+  .profile-avatar { width: 25px; height: 25px; border-radius: 7px; }
+  .profile-switch .profile-name { max-width: 95px; }
+  .exchange-period, .document-date { display: none; }
+  .exchange-head { padding-right: 10px; gap: 0; }
+  .exchange-toggle { gap: 10px; padding: 10px; }
+  .exchange-actions { gap: 2px; }
+  .exchange-chevron { display: none; }
+  .drop.compact { padding: 18px; }
+  .upload-formats { max-width: 250px; line-height: 1.8; }
   .ycols, .vchart { padding-left: 14px; padding-right: 14px; }
   .bar-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
   .bar-track { grid-column: 1 / -1; grid-row: 2; }
