@@ -342,3 +342,19 @@ describe('Precio de mercado de Kraken', () => {
     } finally { vi.unstubAllGlobals(); }
   });
 });
+
+describe('Dividendos', () => {
+  it('devuelve los dividendos de todos los años y nada más', async () => {
+    const profile = db.createProfile('Dividendos');
+    db.withProfile(profile.id, () => {
+      svc.commitImport('Revolut.csv', [
+        'Date,Ticker,Type,Quantity,Price per share,Total Amount,Currency,FX Rate',
+        '2024-01-02T14:00:00.000Z,AAPL,BUY - MARKET,10,EUR 10.00,EUR 100.00,EUR,1',
+        '2024-03-31T14:00:00.000Z,AAPL,DIVIDEND,,,EUR 1.00,EUR,1',
+        '2025-03-31T14:00:00.000Z,AAPL,DIVIDEND,,,EUR 2.00,EUR,1',
+      ].join('\n'));
+    });
+    const items = (await (await request('/api/dividends', profile.id)).json()).items as { year: number; type: string }[];
+    expect(items.map((i) => [i.year, i.type]).sort()).toEqual([[2024, 'dividend'], [2025, 'dividend']]);
+  });
+});

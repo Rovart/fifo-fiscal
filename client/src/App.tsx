@@ -1,10 +1,11 @@
-import { BarChart3, Check, CircleHelp, Home as HomeIcon, ListOrdered, Settings as SettingsIcon, Wallet, TrendingUp } from 'lucide-react';
+import { BarChart3, Check, CircleHelp, Coins, Home as HomeIcon, ListOrdered, Settings as SettingsIcon, Wallet, TrendingUp } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Operation } from '../../shared/types.ts';
 import { api, getProfileId, selectProfile, type AppState } from './api.ts';
 import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
+import { Dividends } from './pages/Dividends.tsx';
 import { Home } from './pages/Home.tsx';
 import { Movements } from './pages/Movements.tsx';
 import { Portfolio } from './pages/Portfolio.tsx';
@@ -16,7 +17,7 @@ import { Upload } from './pages/Upload.tsx';
 import { Performance } from './pages/Performance.tsx';
 import { WhatIf } from './pages/WhatIf.tsx';
 
-const PAGES: Page[] = ['home', 'upload', 'review', 'renta', 'movements', 'portfolio', 'results', 'performance', 'whatif', 'settings'];
+const PAGES: Page[] = ['home', 'upload', 'review', 'renta', 'movements', 'portfolio', 'results', 'dividends', 'performance', 'whatif', 'settings'];
 const fromHash = (): Page => {
   const h = location.hash.slice(1) as Page;
   return PAGES.includes(h) ? h : 'home';
@@ -118,6 +119,7 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
           <NavBtn id="movements"><ListOrdered size={18} /> Movimientos</NavBtn>
           <NavBtn id="portfolio"><Wallet size={18} /> Cartera</NavBtn>
           <NavBtn id="results"><BarChart3 size={18} /> Resultados</NavBtn>
+          <NavBtn id="dividends"><Coins size={18} /> Dividendos</NavBtn>
           <NavBtn id="performance"><TrendingUp size={18} /> Desempeño</NavBtn>
           <NavBtn id="whatif"><CircleHelp size={18} /> ¿Y si vendo?</NavBtn>
           <div className="side-foot"><NavBtn id="settings"><SettingsIcon size={18} /> Ajustes</NavBtn></div>
@@ -131,6 +133,7 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
             {page === 'movements' && <Movements />}
             {page === 'portfolio' && <Portfolio />}
             {page === 'results' && <Results />}
+            {page === 'dividends' && <Dividends />}
             {page === 'performance' && <Performance />}
             {page === 'whatif' && <WhatIf />}
             {page === 'settings' && <Settings />}

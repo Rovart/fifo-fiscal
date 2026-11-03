@@ -580,3 +580,4 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
   .card, .acc, .stat-card { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
   [hidden] { display: flex !important; }
 }
+.dividends-scope { overflow-x: auto; max-width: 100%; }

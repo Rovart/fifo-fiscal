@@ -156,6 +156,7 @@ app.get('/api/incomes', (c) => {
   const res = engine();
   return c.json({ incomes: res.incomes.filter((i) => i.year === y), fees: res.fees.filter((f) => f.year === y) });
 });
+app.get('/api/dividends', (c) => c.json({ items: engine().incomes.filter((i) => i.type === 'dividend') }));
 app.get('/api/portfolio', (c) => {
   const res = engine();
   const balanceDifferences = checks().positions.filter((p) => p.broker === 'externo' && p.ok === false);
