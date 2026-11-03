@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+FIFO_DIR=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+FIFO_APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+FIFO_DESKTOP=$(xdg-user-dir DESKTOP)
+mkdir -p "$FIFO_APPS" "$FIFO_DESKTOP"
+FIFO_EXEC=$(printf '%s' "$FIFO_DIR/linux/fifo-fiscal" | sed 's/\\/\\\\/g; s/"/\\"/g; s/`/\\`/g; s/\$/\\$/g')
+for FIFO_TARGET in "$FIFO_APPS/fifo-fiscal.desktop" "$FIFO_DESKTOP/fifo-fiscal.desktop"; do
+  cat >"$FIFO_TARGET" <<EOF
+[Desktop Entry]
+Type=Application
+Name=FIFO Fiscal
+Comment=Cartera e impuestos de inversiones
+Exec="$FIFO_EXEC"
+Icon=$FIFO_DIR/linux/icon.svg
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=false
+EOF
+  chmod +x "$FIFO_TARGET"
+  command -v gio >/dev/null 2>&1 && gio set "$FIFO_TARGET" metadata::trusted true 2>/dev/null || true
+done
+printf 'FIFO Fiscal instalado en el escritorio y el menú de aplicaciones.\n'

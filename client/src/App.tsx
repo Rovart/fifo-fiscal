@@ -47,17 +47,23 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
         setState(s);
         setLoadError(null);
         setYear((y) => {
-          // Al llegar los primeros datos, o al abrir: el que sigue a la última Renta presentada o, si no consta, el anterior.
+          // Al abrir, usa el ejercicio actual; conserva la elección durante la sesión.
           const first = !hadData.current && s.counts.operations > 0;
           hadData.current = s.counts.operations > 0;
           if (y && s.years.includes(y) && !first) return y;
-          const prev = s.settings.lastFiledYear ? s.settings.lastFiledYear + 1 : Number(s.today.slice(0, 4)) - 1;
-          return s.years.includes(prev) ? prev : (s.years[s.years.length - 1] as number);
+          const current = Number(s.today.slice(0, 4));
+          return s.years.includes(current) ? current : (s.years[s.years.length - 1] as number);
         });
       })
       .catch((e: Error) => { if (active) setLoadError(e.message); });
     return () => { active = false; };
   }, [tick, profileId]);
+
+  useEffect(() => {
+    if (!state?.resolving) return;
+    const timer = setTimeout(() => setTick((t) => t + 1), 1000);
+    return () => clearTimeout(timer);
+  }, [state]);
 
   useEffect(() => { if (location.hash.slice(1) !== page) location.hash = page; }, [page]);
   useEffect(() => {

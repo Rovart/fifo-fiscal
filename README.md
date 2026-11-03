@@ -1,6 +1,6 @@
 # FIFO Fiscal
 
-Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut y Coinbase. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Solo sale a internet para los tipos de cambio del BCE, los precios de Kraken y, si lo pides, los precios de Yahoo. A Yahoo se envían ISIN y símbolos, nunca cantidades ni importes.
+Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut y Coinbase. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Consulta automáticamente tipos del BCE, cotizaciones e históricos públicos, identificadores y repartos publicados para completar las importaciones. A los proveedores solo se envían identificadores y símbolos públicos, nunca nombres de personas, documentos, cantidades ni importes de la cartera.
 
 > Es un apoyo de cálculo, no asesoramiento fiscal. Revisa el resultado en Renta Web. Los criterios y sus fuentes están en [docs/criterios.md](docs/criterios.md).
 
@@ -17,6 +17,8 @@ npm start
 
 Se abre en <http://127.0.0.1:5199>. Para desarrollar, `npm run dev`. Para las pruebas, `npm test`.
 
+En Linux, ejecuta `./linux/install-shortcut` una vez para añadir **FIFO Fiscal** al escritorio y al menú. El acceso directo arranca el servidor si hace falta y abre el navegador; volver a pulsarlo reutiliza el servidor. Los registros de arranque quedan en `data/server.log`.
+
 Cada persona tiene sus propios datos: se guardan en `data/`, que git ignora, y nunca se suben al repositorio. No dejes extractos ni tu base de datos fuera de esa carpeta si vas a contribuir con cambios. Para actualizar, `git pull` y `npm install`; tus datos se conservan.
 
 Al empezar, en **Ajustes**, indica tu última renta presentada: lo anterior no se vuelve a calcular.
@@ -25,13 +27,13 @@ Al empezar, en **Ajustes**, indica tu última renta presentada: lo anterior no s
 
 La barra lateral sigue tres pasos:
 
-1. **Documentos**: arrastra uno o varios CSV. El bróker y el formato se detectan solos. Sube toda la historia desde tu primera compra, porque el FIFO la necesita. Los archivos se agrupan por exchange: puedes añadir más, quitar uno o retirar todos los de un exchange.
+1. **Documentos**: arrastra uno o varios CSV. El bróker y el formato se detectan solos. La primera vez, incluye el historial de tus compras. Después verás desde qué fecha hacen falta movimientos para continuar el FIFO: el cálculo conserva los antecedentes de posiciones abiertas, canjes, divisas y pérdidas aplazadas y comprueba el resultado al recalcular desde esa fecha. Para declarar un ejercicio se necesitan también sus movimientos y las pérdidas pendientes de compensar. Los archivos se agrupan por exchange: puedes añadir más, quitar uno o retirar todos los de un exchange.
    - DEGIRO: `Transactions` y `Account`.
    - Trade Republic: «Exportación de transacciones».
    - Kraken: `Ledgers`, no `Trades`.
-   - Revolut: el extracto de cuenta de Inversiones y el de Cripto. No da ISIN: si tienes un valor también en otro bróker, escríbelo en Ajustes.
+   - Revolut: el extracto de cuenta de Inversiones y el de Cripto. Los CSV antiguos solo dan ticker. Se identifica el ISIN automáticamente cuando hay una correspondencia inequívoca, se aprovecha la columna ISIN si existe y se resuelve la bolsa de los ETF europeos. Un ADR mantiene su propio ISIN.
    - Coinbase: «Transaction history», desde el principio.
-2. **Revisar**: te dice lo que falta y lo que conviene comprobar, agrupado y con un botón para cada cosa.
+2. **Revisar**: completa automáticamente los datos contrastables y muestra lo que aún necesita información. Los dividendos netos pueden conciliarse con el reparto publicado y la cantidad con derecho en la fecha exdividendo. El bruto se reconstruye con esos datos y la retención por diferencia, conservando el neto importado. Se exige coincidencia de fecha, divisa e importe (un céntimo, más la diferencia comprobable entre 4 y 6 decimales por acción, con límite total de cinco céntimos). No se aplica un porcentaje supuesto al neto. Los importes reconstruidos y sus fuentes aparecen en el movimiento; un justificante del bróker permite corregirlos si su redondeo difiere. Las ediciones manuales se respetan. Los avisos de ingresos antiguos no se arrastran a otro ejercicio por vender después el mismo activo.
 3. **Mi Renta**: copia cada importe a su casilla con un clic y marca lo que ya has pasado a Renta Web. También exporta a Excel o PDF.
 
 Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
@@ -39,6 +41,12 @@ Para consultar: **Movimientos** (el extracto completo, donde se edita y se añad
 Reimportar un fichero es seguro: lo repetido se ignora y tus ediciones se conservan. Si quitas un documento, sus movimientos duplicados siguen disponibles mientras aparezcan en otro documento que conserves.
 
 El selector de cuenta de la barra lateral permite crear una cuenta para cada persona y cambiar entre ellas. Cada cuenta tiene documentos, movimientos, ajustes, FIFO y marcas de Renta independientes. Los datos existentes quedan en **Mi cuenta**.
+
+En **Ajustes → Recalcular FIFO**, un botón comprueba automáticamente qué ciclos anteriores ya no hacen falta. Solo aplica el recorte si reproduce las cantidades, la ubicación y el coste actuales, las pérdidas aplazadas y los resultados de todos los ejercicios sin presentar. Usa la «Última Renta presentada» para delimitar los ejercicios que hay que conservar. Si no se ha indicado, conserva los resultados de todos los años. Después de activarlo, vuelve a comprobar el recorte al importar o editar movimientos.
+
+Los documentos y movimientos originales se conservan; lo excluido aparece como «Fuera del FIFO» y las permutas conservan la parte necesaria del otro activo. Los saldos en divisa mantienen sus antecedentes. Una retirada a una cartera externa sigue siendo propiedad del titular: que un exchange llegue a cero no prueba por sí solo que se haya vendido todo. Si faltan retornos o costes, conserva el historial necesario sin inventarlos.
+
+Si el titular confirma un saldo total cero en un mes ya declarado, se puede registrar esa confirmación como dato de inventario (`fifoConfirmedClosures`, con mes y motivo). El recálculo deduce el siguiente ciclo a partir de las operaciones posteriores; no crea una venta ni un coste ficticios. La confirmación debe referirse también a las carteras externas y no puede eliminar resultados de años sin presentar.
 
 ## Edición y cuadre
 

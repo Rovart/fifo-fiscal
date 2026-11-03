@@ -99,6 +99,65 @@ describe('Cuentas independientes', () => {
     await workbook.xlsx.load(await response.arrayBuffer());
     expect(workbook.getWorksheet('Operaciones')!.rowCount).toBe(1);
   });
+  it('el inicio del FIFO corresponde a la persona seleccionada', async () => {
+    const empty = db.createProfile('Sin posiciones');
+    const invested = db.createProfile('Con posiciones');
+    db.withProfile(invested.id, () => svc.createOp({ kind: 'buy', datetime: '2026-01-02T12:00:00', assetId: 'US0378331005', assetName: 'Apple', assetClass: 'stock', quantity: '1', unitPrice: '100', currency: 'EUR', fxRate: '1', grossLocal: '100', grossEur: '100', totalEur: '100' }));
+    expect(await (await request('/api/fifo/history', empty.id)).json()).toMatchObject({ from: null, complete: true });
+    expect(await (await request('/api/fifo/history', invested.id)).json()).toMatchObject({ from: '2026-01-02', complete: true });
+  });
+  it('el recorte es por cuenta, conserva operaciones y documentos y se puede quitar', async () => {
+    const profile = db.createProfile('Recorte');
+    db.withProfile(profile.id, () => svc.commitImport('Extracto.csv', csv));
+    const original = await (await request('/api/state', profile.id)).json();
+    const settings = { ...original.settings, fifoStartDates: { '*': '2026-01-01' } };
+    expect((await request('/api/settings', profile.id, 'PUT', settings)).status).toBe(200);
+    expect((await (await request('/api/operations', profile.id)).json()).items.every((o: { _excluded: boolean; _partial: boolean }) => o._excluded || o._partial)).toBe(true);
+    expect((await (await request('/api/imports', profile.id)).json()).length).toBe(1);
+    expect((await (await request('/api/state', profile.id)).json()).counts.operations).toBe(original.counts.operations);
+    expect((await (await request('/api/settings')).json()).fifoStartDates).toBeUndefined();
+    const ExcelJS = (await import('exceljs')).default;
+    const exported = await request('/api/export/2024', profile.id);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await exported.arrayBuffer());
+    const sheet = workbook.getWorksheet('Operaciones')!;
+    const column = (sheet.getRow(1).values as string[]).indexOf('Cálculo FIFO');
+    expect(['Fuera del FIFO', 'Recorte parcial']).toContain(sheet.getRow(2).getCell(column).value);
+    expect((await request('/api/simulate', profile.id, 'POST', { date: '2024-01-01', sales: [{ assetId: 'US0378331005', quantity: '1', priceEur: '100' }] })).status).toBe(422);
+    expect((await request('/api/settings', profile.id, 'PUT', { ...settings, fifoStartDates: { '*': '2026-02-30' } })).status).toBe(422);
+    await request('/api/settings', profile.id, 'PUT', { ...settings, fifoStartDates: {} });
+    expect((await (await request('/api/operations', profile.id)).json()).items.every((o: { _excluded: boolean }) => !o._excluded)).toBe(true);
+  });
+  it('el botón recalcula sin fechas manuales y los criterios fiscales no desactivan el recorte', async () => {
+    const profile = db.createProfile('Automático');
+    db.withProfile(profile.id, () => {
+      svc.commitImport('Extracto.csv', csv);
+      db.saveSettings({ ...DEFAULT_SETTINGS, lastFiledYear: 2025, fifoStartDates: { '*': '2026-01-01' } });
+    });
+    const count = db.withProfile(profile.id, () => db.allOps().length);
+    const response = await request('/api/fifo/recalculate', profile.id, 'POST');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ verified: true });
+    expect(await (await request('/api/settings', profile.id)).json()).toMatchObject({ fifoAutoStart: true, fifoStartDates: {} });
+    await request('/api/settings', profile.id, 'PUT', { treatyDefault: '12' });
+    expect(await (await request('/api/settings', profile.id)).json()).toMatchObject({ fifoAutoStart: true, treatyDefault: '12' });
+    expect((await (await request('/api/state', profile.id)).json()).counts.operations).toBe(count);
+    expect(await (await request('/api/imports', profile.id)).json()).toHaveLength(1);
+    expect((await (await request('/api/settings')).json()).fifoAutoStart).toBeUndefined();
+  });
+  it('distingue el saldo declarado en una cartera del saldo calculado sin inventar lotes', async () => {
+    const profile = db.createProfile('Cartera externa');
+    db.withProfile(profile.id, () => {
+      svc.createOp({ kind: 'buy', datetime: '2026-01-02T12:00:00', assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', quantity: '2', unitPrice: '100', currency: 'EUR', fxRate: '1', grossLocal: '200', grossEur: '200', totalEur: '200', broker: 'kraken' });
+      svc.createOp({ kind: 'transfer_out', datetime: '2026-01-03T12:00:00', assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', quantity: '2', broker: 'kraken' });
+      svc.setDeclaredBalance('externo', 'ETH', '2.5');
+    });
+    const portfolio = await (await request('/api/portfolio', profile.id)).json();
+    expect(portfolio.balanceDifferences).toMatchObject([{ assetId: 'ETH', computed: '2', declared: '2.5', ok: false }]);
+    expect(portfolio.positions[0].quantity).toBe('2');
+    expect(portfolio.lots).toHaveLength(1);
+    expect((await (await request('/api/portfolio')).json()).balanceDifferences).toEqual([]);
+  });
 });
 
 describe('Documentos de un mismo exchange', () => {

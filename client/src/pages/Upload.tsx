@@ -1,10 +1,10 @@
 import { ArrowRight, Check, CircleAlert, FileText, Loader2, Plus, Trash2, UploadCloud, X } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { BROKER_LABEL, type Broker } from '../../../shared/types.ts';
+import { BROKER_LABEL, type Broker, type FifoHistory } from '../../../shared/types.ts';
 import { api } from '../api.ts';
 import { Callout, Dialog, Disclosure, Loading, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
-import { dateShort } from '../format.ts';
+import { dateShort, monthLabel } from '../format.ts';
 import { useApi } from '../hooks.ts';
 
 interface Preview {
@@ -64,6 +64,7 @@ export function Upload() {
   const readLock = useRef(false);
   const commitLock = useRef(false);
   const { data: history, error: historyError } = useApi<ImportRow[]>('/imports', tick);
+  const { data: fifo } = useApi<FifoHistory>('/fifo/history', tick);
   // Una carga en curso sigue ligada a su cuenta aunque el usuario cambie de persona.
   const request = <T,>(path: string, opts: { method?: string; body?: unknown } = {}) => api<T>(path, { ...opts, profileId: state.profileId });
   const locked = busy || reading || removing;
@@ -152,6 +153,13 @@ export function Upload() {
         {!hasHistory && <span className="upload-formats">DEGIRO · Trade Republic · Kraken · Revolut · Coinbase</span>}
       </div>
       {(error && !removal || historyError) && <Callout tone="error">{historyError || error}</Callout>}
+
+      {!!state.counts.operations && fifo && <Disclosure card title={<span>FIFO {fifo.cryptoFrom ? 'cripto ' : ''}{fifo.cryptoFrom || fifo.from ? <>desde <strong>{dateShort(fifo.cryptoFrom ?? fifo.from)}</strong></> : 'cerrado'}{!fifo.complete && !fifo.cryptoFrom && <span className="small muted"> · Historial por completar</span>}</span>}>
+          {fifo.cryptoFrom && fifo.from && fifo.from < fifo.cryptoFrom && <p className="small muted">Otros activos necesitan historial desde {dateShort(fifo.from)}.</p>}
+          <p className="small muted">{!fifo.complete ? 'Faltan datos para confirmar un inicio más reciente.' : fifo.from ? 'Para continuar en próximos años, necesitas los movimientos desde esta fecha. Lo anterior ya no sostiene posiciones ni pérdidas aplazadas.' : 'No quedan posiciones ni pérdidas aplazadas. Puedes empezar con las próximas operaciones.'} Conserva también los movimientos del año que declares y tus pérdidas pendientes de compensar.</p>
+          {state.settings.fifoAutoStart && Object.entries(state.settings.fifoConfirmedClosures ?? {}).map(([id, c]) => <p className="small muted" key={id} title={c.note}>{id} · Saldo cero confirmado por el titular en {monthLabel(c.month)}.</p>)}
+          {fifo.assets.length > 0 && <div className="list">{fifo.assets.map((a) => <div className="item" key={a.assetId}><span className="main-col small">{a.assetName}{a.deferred && <span className="muted"> · Pérdida aplazada</span>}</span><span className="small num">{dateShort(a.from)}</span></div>)}</div>}
+      </Disclosure>}
 
       {items.length > 0 && <section className="card flush upload-queue" aria-label="Documentos seleccionados" aria-busy={busy}>
         <div className="card-title"><h2>{pending.length ? 'Listos para añadir' : 'Documentos seleccionados'}</h2><button className="btn quiet small" disabled={locked} onClick={() => setItems([])}>Limpiar</button></div>

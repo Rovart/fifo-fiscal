@@ -4,13 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { reconcile } from '../shared/reconcile.ts';
 import type { Asset, Operation, Settings } from '../shared/types.ts';
 import { D } from '../shared/decimal.ts';
+import { fifoOperations } from '../shared/fifo-start.ts';
 import { ProfileError, allOps, createProfile, currentProfileId, getHistory, getOp, getSettings, latestRateDate, listAssets, listProfiles, profileDbPath, rateAt, renameProfile, saveAsset, saveSettings, withProfile } from './db.ts';
 import { isNeutralFx } from './engine/report.ts';
+import { fifoHistory } from './engine/history.ts';
+import { runEngine } from './engine/fifo.ts';
 import { exportYear } from './export.ts';
 import { performance, refreshPriceHistory } from './history.ts';
 import { refreshQuotes, storedQuotes } from './quotes.ts';
+import { resolutionRunning, scheduleResolution } from './resolution.ts';
 import {
-  ValidationError, assetsMap, brokerNames, checks, commitImport, confirmReview, countMissingValues, createOp, deleteOp, engine, pendingByYear, previewImport, priceEur, refreshEcbRates, report, resolveCryptoValues,
+  ValidationError, assetsMap, brokerNames, calculationOps, checks, commitImport, confirmReview, countMissingValues, createOp, deleteOp, engine, pendingByYear, previewImport, priceEur, refreshEcbRates, report, resolveCryptoValues,
   listImports, removeBrokerImports, restoreDeleted, restoreOriginal, setAssetIsin, setDeclaredBalance, simulateSales, today, undoImport, updateOp, withAssetMeta,
 } from './service.ts';
 
@@ -36,21 +40,37 @@ app.onError((err, c) => {
 });
 
 app.get('/api/profiles', (c) => c.json(listProfiles()));
+app.get('/api/health', (c) => c.json({ app: 'fifo-fiscal' }));
 app.post('/api/profiles', async (c) => c.json(createProfile((await c.req.json()).name), 201));
 app.put('/api/profiles/:id', async (c) => c.json(renameProfile(c.req.param('id'), (await c.req.json()).name)));
 
 app.get('/api/state', (c) => {
+  scheduleResolution();
   const res = engine();
   const yearNow = Number(today().slice(0, 4));
-  const years = res.years.length ? [...new Set([...res.years, yearNow])].sort() : [yearNow];
   const ops = allOps();
+  const years = [...new Set([...ops.map((o) => Number(o.datetime.slice(0, 4))), ...res.years, yearNow])].sort();
   // Un activo sin movimientos (por ejemplo, tras quitar un fichero) no debe seguir apareciendo.
   const used = new Set(ops.flatMap((o) => [o.assetId, o.counterAsset ?? '']));
   return c.json({
-    profileId: currentProfileId(), profiles: listProfiles(),
+    profileId: currentProfileId(), profiles: listProfiles(), resolving: resolutionRunning(),
     settings: getSettings(), assets: listAssets().filter((a) => used.has(a.id)), years, today: today(), dbPath: relative(join(here, '..'), profileDbPath()) || profileDbPath(), latestRate: latestRateDate(),
     counts: { operations: ops.length, byYear: pendingByYear(), missingValues: countMissingValues() },
   });
+});
+
+app.get('/api/fifo/history', (c) => {
+  const assets = assetsMap();
+  const full = c.req.query('full') === '1';
+  const settings = { ...getSettings(), ...(full ? { fifoStartDates: {}, fifoAutoStart: false } : {}) };
+  const input = { ops: withAssetMeta(allOps(), assets), assets, settings, rateAt, today: today() };
+  return c.json(fifoHistory(input, full ? runEngine(input) : engine()));
+});
+
+app.post('/api/fifo/recalculate', (c) => {
+  saveSettings({ ...getSettings(), fifoAutoStart: true, fifoStartDates: {} });
+  const result = engine();
+  return c.json(result.fifoAuto);
 });
 
 app.get('/api/operations', (c) => {
@@ -59,6 +79,7 @@ app.get('/api/operations', (c) => {
   const res = engine();
   const assets = assetsMap();
   const problem = new Map<string, string>();
+  const calculated = new Map(calculationOps().map((o) => [o.id, o]));
   for (const i of res.issues) if (i.opId && i.severity !== 'info') problem.set(i.opId, i.severity);
   let ops = allOps(q.flag === 'deleted').filter((o) => (q.flag === 'deleted' ? o.deleted : true));
   if (q.year) ops = ops.filter((o) => o.datetime.startsWith(q.year as string));
@@ -72,13 +93,13 @@ app.get('/api/operations', (c) => {
     const t = (q.q as string).toLowerCase();
     ops = ops.filter((o) => `${o.assetName} ${assets.get(o.assetId)?.name ?? ''} ${o.assetId} ${o.note ?? ''}`.toLowerCase().includes(t));
   }
-  if (q.flag === 'review') ops = ops.filter((o) => o.reviewReasons?.length);
+  if (q.flag === 'review') ops = ops.filter((o) => calculated.get(o.id)?.reviewReasons?.length);
   if (q.flag === 'edited') ops = ops.filter((o) => o.edited);
   if (q.flag === 'errors') ops = ops.filter((o) => problem.get(o.id) === 'error');
   ops.reverse();
   return c.json({
     total: ops.length,
-    items: withAssetMeta(ops.slice(offset, offset + limit), assets).map((o) => ({ ...o, _issue: problem.get(o.id) ?? null })),
+    items: withAssetMeta(ops.slice(offset, offset + limit), assets).map((o) => ({ ...o, _issue: problem.get(o.id) ?? null, _excluded: !calculated.has(o.id), _partial: !!calculated.get(o.id)?.fifoLeg })),
   });
 });
 
@@ -95,6 +116,7 @@ app.post('/api/review/confirm', async (c) => {
   const b = (await c.req.json()) as { ids: string[]; reason?: string };
   return c.json({ confirmed: confirmReview(b.ids, b.reason) });
 });
+app.post('/api/review/resolve', (c) => { scheduleResolution(true); return c.json({ resolving: resolutionRunning() }); });
 app.get('/api/operations/:id/history', (c) => c.json(getHistory(c.req.param('id'))));
 app.post('/api/reconcile', async (c) => c.json(reconcile((await c.req.json()) as Operation, getSettings().toleranceEur)));
 
@@ -109,7 +131,9 @@ app.post('/api/import/preview', async (c) => {
 app.post('/api/import/commit', async (c) => {
   const { file, content } = (await c.req.json()) as { file: string; content: string };
   try {
-    return c.json(commitImport(file, content));
+    const result = commitImport(file, content);
+    scheduleResolution(true);
+    return c.json(result);
   } catch (e) {
     return c.json({ error: (e as Error).message }, 422);
   }
@@ -132,7 +156,8 @@ app.get('/api/incomes', (c) => {
 });
 app.get('/api/portfolio', (c) => {
   const res = engine();
-  return c.json({ lots: res.openLots, positions: res.positions, quotes: storedQuotes(), brokerNames: brokerNames(), today: today() });
+  const balanceDifferences = checks().positions.filter((p) => p.broker === 'externo' && p.ok === false);
+  return c.json({ lots: res.openLots, positions: res.positions, quotes: storedQuotes(), brokerNames: brokerNames(), today: today(), balanceDifferences });
 });
 app.get('/api/performance', (c) => c.json(performance()));
 app.post('/api/performance/refresh', async (c) => {
@@ -154,7 +179,20 @@ app.put('/api/balances', async (c) => {
 app.post('/api/simulate', async (c) => c.json(simulateSales((await c.req.json()) as Parameters<typeof simulateSales>[0])));
 
 app.get('/api/settings', (c) => c.json(getSettings()));
-app.put('/api/settings', async (c) => { saveSettings((await c.req.json()) as Settings); return c.json(getSettings()); });
+app.put('/api/settings', async (c) => {
+  const settings = (await c.req.json()) as Settings;
+  if (settings.fifoAutoStart !== undefined && typeof settings.fifoAutoStart !== 'boolean') throw new ValidationError('Revisa el inicio automático del FIFO.', null);
+  if (settings.fifoConfirmedClosures !== undefined && (!settings.fifoConfirmedClosures || typeof settings.fifoConfirmedClosures !== 'object' || Array.isArray(settings.fifoConfirmedClosures)
+    || Object.entries(settings.fifoConfirmedClosures).some(([id, c]) => !/^[A-Z0-9._-]+$/.test(id) || !c || !/^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) || typeof c.note !== 'string' || !c.note.trim()))) throw new ValidationError('Revisa los cierres de inventario confirmados.', null);
+  const starts = settings.fifoStartDates;
+  if (starts !== undefined && (!starts || typeof starts !== 'object' || Array.isArray(starts) || Object.entries(starts).some(([id, date]) => {
+    if (!/^[A-Z0-9:*._-]+$/.test(id) || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return true;
+    const time = Date.parse(`${date}T12:00:00Z`);
+    return !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date;
+  }))) throw new ValidationError('Revisa las fechas de inicio del FIFO.', null);
+  saveSettings({ ...getSettings(), ...settings });
+  return c.json(getSettings());
+});
 app.post('/api/assets/:id/isin', async (c) => {
   const { isin } = (await c.req.json()) as { isin: string };
   setAssetIsin(c.req.param('id'), isin);

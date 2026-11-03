@@ -72,6 +72,10 @@ export interface Operation {
   edited?: boolean;
   deleted?: boolean;
   simulated?: boolean;
+  /** Solo durante el cálculo de una permuta parcialmente recortada. Nunca se guarda. */
+  fifoLeg?: 'swap_in' | 'swap_out' | 'cash_only';
+  /** Evidencia utilizada para completar datos automáticamente, sin marcar una edición manual. */
+  resolutions?: { code: 'isin' | 'dividend' | 'corporate_action' | 'fee'; at: string; source: string; detail: string }[];
 }
 
 export interface Asset {
@@ -88,6 +92,13 @@ export interface Asset {
 }
 
 export interface Settings {
+  /** Recorta solo ciclos que reproducen posiciones, costes y ejercicios abiertos. */
+  fifoAutoStart?: boolean;
+  /** Saldo total cero confirmado por el titular al cierre de un mes ya presentado.
+   * Aporta el dato que un extracto de exchange no prueba sobre carteras externas. */
+  fifoConfirmedClosures?: Record<string, { month: string; note: string }>;
+  /** Inicio inclusivo por activo; * es general y CRYPTO:* reinicia todo el historial cripto. */
+  fifoStartDates?: Record<string, string>;
   toleranceEur: string;
   /** broker = tipo real de la operación; ecb = todas las conversiones al tipo oficial del BCE. */
   fxSource: 'broker' | 'ecb';
@@ -255,6 +266,8 @@ export interface Issue {
   quantity?: string;
   /** Motivo de revisión, para agrupar y confirmar en bloque. */
   reason?: string;
+  /** Si es falso, el aviso no cambia el FIFO de ejercicios posteriores. */
+  affectsFuture?: boolean;
   year?: number;
   /** Faltan compras de algo que llegó de fuera y ya se vendió entero: los años siguientes no dependen de ello. */
   settled?: boolean;
@@ -346,6 +359,8 @@ export interface PerformanceData {
 }
 
 export interface EngineResult {
+  /** Consumos de lotes sin transmisión fiscal, como comisiones pagadas en cripto. */
+  lotUses?: { opId: string; assetId: string; date: string; acqDates: string[] }[];
   disposals: Disposal[];
   tranches: LossTranche[];
   incomes: Income[];
@@ -357,6 +372,20 @@ export interface EngineResult {
   monthly?: Record<string, Position[]>;
   issues: Issue[];
   years: number[];
+  /** Gastos en divisa todavía pendientes de un ingreso que los cubra. */
+  fxShorts?: { currency: string; date: string; quantity: string; eur: string }[];
+  unmatchedTransfers?: { assetId: string; quantity: string }[];
+  fifoAuto?: { verified: boolean; starts: Record<string, string>; excluded: number; externalAssets: string[] };
+}
+
+export interface FifoHistory {
+  /** Datos necesarios para continuar desde las posiciones y pérdidas actuales. No sustituye una Renta anterior. */
+  from: string | null;
+  cryptoFrom?: string | null;
+  complete: boolean;
+  assets: { assetId: string; assetName: string; from: string; deferred: boolean }[];
+  closedAssets: number;
+  auto?: EngineResult['fifoAuto'];
 }
 
 export const CLASS_LABEL: Record<DisposalClass, string> = {

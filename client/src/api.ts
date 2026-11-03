@@ -10,6 +10,7 @@ export function selectProfile(id: string) {
 export interface AppState {
   profileId: string;
   profiles: Profile[];
+  resolving: boolean;
   settings: Settings;
   assets: Asset[];
   years: number[];
@@ -35,4 +36,4 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   return data as T;
 }
 
-export type OpRow = Operation & { _issue?: string | null };
+export type OpRow = Operation & { _issue?: string | null; _excluded?: boolean; _partial?: boolean };

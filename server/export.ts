@@ -3,7 +3,7 @@ import { D } from '../shared/decimal.ts';
 import { BROKER_LABEL, CLASS_LABEL, KIND_LABEL } from '../shared/types.ts';
 import { isNeutralFx } from './engine/report.ts';
 import { allOps } from './db.ts';
-import { assetsMap, engine, report, withAssetMeta } from './service.ts';
+import { assetsMap, calculationOps, engine, report, withAssetMeta } from './service.ts';
 
 const EUR = '#,##0.00 "€"';
 const num = (s: string | null | undefined) => (s === null || s === undefined || s === '' ? null : D(s).toNumber());
@@ -133,12 +133,13 @@ export async function exportYear(year: number): Promise<Uint8Array> {
   opsSheet.columns = [
     { header: 'Fecha y hora', key: 'd', width: 19 }, { header: 'Bróker', key: 'b', width: 14 }, { header: 'Tipo', key: 'k', width: 16 }, { header: 'Activo', key: 'n', width: 32 }, { header: 'ISIN o activo', key: 'id', width: 16 },
     { header: 'Cantidad', key: 'q', width: 14 }, { header: 'Precio', key: 'p', width: 13 }, { header: 'Divisa', key: 'c', width: 7 }, { header: 'Importe divisa', key: 'gl', width: 13 }, { header: 'Tipo de cambio', key: 'fx', width: 11 },
-    { header: 'Importe EUR', key: 'ge', width: 13 }, { header: 'Comisión', key: 'fee', width: 10 }, { header: 'Otros gastos', key: 'other', width: 10 }, { header: 'Retención', key: 'wh', width: 10 }, { header: 'Total EUR', key: 't', width: 13 }, { header: 'Editada', key: 'e', width: 8 },
+    { header: 'Importe EUR', key: 'ge', width: 13 }, { header: 'Comisión', key: 'fee', width: 10 }, { header: 'Otros gastos', key: 'other', width: 10 }, { header: 'Retención', key: 'wh', width: 10 }, { header: 'Total EUR', key: 't', width: 13 }, { header: 'Editada', key: 'e', width: 8 }, { header: 'Cálculo FIFO', key: 'fifo', width: 20 },
   ];
+  const calculated = new Map(calculationOps().map((o) => [o.id, o]));
   for (const o of withAssetMeta(allOps(), assetsMap()).filter((x) => x.datetime.startsWith(String(year)))) {
     opsSheet.addRow({
       d: o.datetime.replace('T', ' '), b: BROKER_LABEL[o.broker], k: KIND_LABEL[o.kind], n: o.assetName, id: o.assetId, q: num(o.quantity), p: num(o.unitPrice), c: o.currency, gl: num(o.grossLocal), fx: num(o.fxRate),
-      ge: num(o.grossEur), fee: num(o.feeEur), other: num(o.otherCostsEur), wh: num(o.withholdingEur), t: num(o.totalEur), e: o.edited ? 'Sí' : '',
+      ge: num(o.grossEur), fee: num(o.feeEur), other: num(o.otherCostsEur), wh: num(o.withholdingEur), t: num(o.totalEur), e: o.edited ? 'Sí' : '', fifo: !calculated.has(o.id) ? 'Fuera del FIFO' : calculated.get(o.id)?.fifoLeg ? 'Recorte parcial' : 'Incluida',
     });
   }
   style(opsSheet, [11, 12, 13, 14, 15]);

@@ -5,6 +5,8 @@ import type {
   OpKind, OpenLot, Operation, Position, Settings,
 } from '../../shared/types.ts';
 import { KIND_LABEL } from '../../shared/types.ts';
+import { fifoOperations } from '../../shared/fifo-start.ts';
+import { runAutomaticFifo } from './auto-start.ts';
 import { addMonths, dateOf, yearOf, nextMonth } from './dates.ts';
 
 export interface EngineInput {
@@ -85,6 +87,8 @@ function resolveOp(op: Operation, settings: Settings, rateAt: EngineInput['rateA
 }
 
 export function runEngine(input: EngineInput): EngineResult {
+  if (input.settings.fifoAutoStart) return runAutomaticFifo(input);
+  input = { ...input, ops: fifoOperations(input.ops, input.settings) };
   const { assets, settings, rateAt, today } = input;
   const books = new Map<string, AssetBook>();
   const names = new Map<string, { name: string; klass: DisposalClass }>();
@@ -92,6 +96,7 @@ export function runEngine(input: EngineInput): EngineResult {
   const tranchesOut: LossTranche[] = [];
   const incomes: Income[] = [];
   const fees: FeeEntry[] = [];
+  const lotUses: NonNullable<EngineResult['lotUses']> = [];
   const issues: Issue[] = [];
   const brokerQty = new Map<string, Map<string, Decimal>>();
   const brokerOfOp = new Map(input.ops.map((o) => [o.id, o.broker]));
@@ -337,7 +342,7 @@ export function runEngine(input: EngineInput): EngineResult {
   const fxAsset = (c: string) => `${FX_PREFIX}${c}`;
 
   // Lo gastado en una moneda antes de tenerla, a la espera del cambio que lo pague (habitual con AutoFX).
-  const shorts = new Map<string, { qty: Decimal; eur: Decimal }[]>();
+  const shorts = new Map<string, { qty: Decimal; eur: Decimal; date: string }[]>();
 
   const cashIn = (op: Operation, currency: string, raw: Decimal, eur: Decimal) => {
     const amount = raw.toDecimalPlaces(2);
@@ -378,7 +383,7 @@ export function runEngine(input: EngineInput): EngineResult {
     if (held.gt(0)) dispose({ op, assetId: fxAsset(currency), assetName: currency, klass: 'fx', qty: held, proceeds: eur.times(held.div(amount)) });
     if (held.lt(amount)) {
       const list = shorts.get(currency) ?? [];
-      list.push({ qty: amount.minus(held), eur: eur.times(amount.minus(held).div(amount)) });
+      list.push({ qty: amount.minus(held), eur: eur.times(amount.minus(held).div(amount)), date: op.datetime.slice(0, 10) });
       shorts.set(currency, list);
     }
     moveBroker(fxAsset(currency), op.broker, amount.neg());
@@ -448,10 +453,11 @@ export function runEngine(input: EngineInput): EngineResult {
 
     if (op.reviewReasons?.length && !op.simulated) {
       for (const reason of op.reviewReasons) {
-        issues.push({ severity: 'warning', code: 'needs_review', opId: op.id, assetId: op.assetId, assetName: op.assetName, date: dateOf(op.datetime), year: y, reason, message: reason });
+        issues.push({ severity: 'warning', code: 'needs_review', opId: op.id, assetId: op.assetId, assetName: op.assetName, date: dateOf(op.datetime), year: y, reason, message: reason,
+          affectsFuture: ['buy', 'sell', 'swap', 'split', 'isin_change', 'transfer_in', 'transfer_out', 'staking', 'reward', 'return_capital'].includes(op.kind) });
       }
     }
-    if (!op.simulated) {
+    if (!op.simulated && op.fifoLeg !== 'cash_only') {
       const rec = reconcile(raw, settings.toleranceEur);
       if (!isNum(raw.grossEur) && NEEDS_VALUE.includes(raw.kind)) {
         issues.push({
@@ -480,6 +486,16 @@ export function runEngine(input: EngineInput): EngineResult {
     const settleRate = settleForeign ? (settleForeign === op.currency ? rate : rateAt(settleForeign, date)) : null;
     const hasValue = isNum(op.grossEur) && isNum(op.totalEur);
 
+    if (op.fifoLeg === 'cash_only') {
+      const cash = settleForeign ? ['buy', 'sell'].includes(op.kind) ? tradeCash(op, total, settleRate)
+        : settleRate ? { amount: total.times(settleRate), eur: total } : null : null;
+      if (cash && settleForeign) {
+        if (op.kind === 'buy') cashOut(op, settleForeign, cash.amount, cash.eur);
+        else cashIn(op, settleForeign, cash.amount, cash.eur);
+      }
+      continue;
+    }
+
     switch (op.kind) {
       case 'buy': {
         newLot({
@@ -494,7 +510,7 @@ export function runEngine(input: EngineInput): EngineResult {
       }
       case 'sell': {
         dispose({
-          op, assetId: op.assetId, assetName: op.assetName, klass, qty: q, proceeds: total, clave: klass === 'crypto' ? 'F' : undefined,
+          op, assetId: op.assetId, assetName: op.assetName, klass, qty: q, proceeds: total, clave: klass === 'crypto' ? op.fifoLeg === 'swap_out' ? 'N' : 'F' : undefined,
           splitRate, incomplete: !hasValue,
         });
         moveBroker(op.assetId, op.broker, q.neg());
@@ -576,7 +592,8 @@ export function runEngine(input: EngineInput): EngineResult {
         });
         // Coste pagado en cripto de forma mínima y repetida: reduce el saldo sin contarlo como venta.
         if (klass === 'crypto' && isNum(op.quantity) && q.gt(0)) {
-          const { shortfall } = consume(op.assetId, q, [], date);
+          const { used, shortfall } = consume(op.assetId, q, [], date);
+          lotUses.push({ opId: op.id, assetId: op.assetId, date, acqDates: used.map((u) => u.lot.date) });
           if (shortfall.gt(0)) useOutside(op.assetId, shortfall);
           moveBroker(op.assetId, op.broker, q.neg());
           noteHistory(op.assetId, date);
@@ -757,7 +774,9 @@ export function runEngine(input: EngineInput): EngineResult {
   if (input.monthly && currentMonth) {
     for (let m = currentMonth; m <= input.today.slice(0, 7); m = nextMonth(m)) monthly[m] = positions;
   }
-  return { disposals, tranches: tranchesOut, incomes, fees, openLots, positions, snapshots, issues, years: [...years].sort(), ...(input.monthly ? { monthly } : {}) };
+  const fxShorts = [...shorts].flatMap(([currency, items]) => items.filter((s) => s.qty.gt(0)).map((s) => ({ currency, date: s.date, quantity: s.qty.toFixed(), eur: s.eur.toFixed() })));
+  const unmatchedTransfers = [...outside].filter(([, q]) => q.gt(0)).map(([assetId, q]) => ({ assetId, quantity: q.toFixed() }));
+  return { disposals, tranches: tranchesOut, incomes, fees, openLots, positions, snapshots, issues, years: [...years].sort(), fxShorts, unmatchedTransfers, lotUses, ...(input.monthly ? { monthly } : {}) };
 }
 
 export type { Broker };

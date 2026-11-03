@@ -77,7 +77,7 @@ const SECTION_META: Record<FormSection['id'], { title: string; boxes: Record<str
  */
 export function issuesForYear(res: EngineResult, year: number): Issue[] {
   const sold = new Set(res.disposals.filter((d) => d.year === year).map((d) => d.assetId));
-  return res.issues.filter((i) => i.year === undefined || i.year === year || (i.year < year && !i.settled && !!i.assetId && sold.has(i.assetId)));
+  return res.issues.filter((i) => i.year === undefined || i.year === year || (i.year < year && i.severity !== 'info' && i.affectsFuture !== false && !i.settled && !!i.assetId && sold.has(i.assetId)));
 }
 
 /** Cambio de moneda sin efecto: el dinero solo pasa por la divisa para pagar o cobrar una operación. */

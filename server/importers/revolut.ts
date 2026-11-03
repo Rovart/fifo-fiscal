@@ -1,5 +1,7 @@
 import { D, Decimal, ZERO, toStr } from '../../shared/decimal.ts';
 import type { Operation } from '../../shared/types.ts';
+import { REVOLUT_DIVIDEND, validIsin } from '../../shared/review.ts';
+import { securityFor } from '../securities.ts';
 import { KeyCounter, addCount, baseOp, finishCash, finishIncome, finishTrade, flexibleDate, moneyOf, num, review, valueInEur, type ParsedImport, type RateFn } from './common.ts';
 import { findCol, norm } from './csv.ts';
 import { cryptoName } from './kraken.ts';
@@ -21,7 +23,7 @@ function usableRate(fx: Decimal | null, currency: string, date: string, rate: Ra
 
 export function parseRevolutStocks(headers: string[], rows: string[][], rate: RateFn): ParsedImport {
   const col = (n: string) => findCol(headers, [n]);
-  const i = { date: col('Date'), ticker: col('Ticker'), type: col('Type'), qty: col('Quantity'), price: col('Price per share'), total: col('Total Amount'), cur: col('Currency'), fx: col('FX Rate') };
+  const i = { date: col('Date'), ticker: col('Ticker'), isin: col('ISIN'), type: col('Type'), qty: col('Quantity'), price: col('Price per share'), total: col('Total Amount'), cur: col('Currency'), fx: col('FX Rate') };
   const keys = new KeyCounter();
   const ops: Operation[] = [];
   const warnings: string[] = [];
@@ -39,7 +41,9 @@ export function parseRevolutStocks(headers: string[], rows: string[][], rate: Ra
     const currency = (f(i.cur) || total?.currency || 'USD').toUpperCase();
     const key = keys.key('rev-st', f(i.date), ticker, type, f(i.qty), f(i.total));
     const fx = usableRate(num(f(i.fx)), currency, date, rate);
-    const stock = (kind: Operation['kind']) => baseOp({ broker: 'revolut', kind, datetime, assetId: ticker, assetName: ticker, assetClass: 'stock', currency, sourceKey: key });
+    const suppliedIsin = f(i.isin).toUpperCase();
+    const assetId = validIsin(suppliedIsin) ? suppliedIsin : ticker;
+    const stock = (kind: Operation['kind']) => baseOp({ broker: 'revolut', kind, datetime, assetId, assetName: securityFor(assetId)?.name ?? ticker, assetClass: securityFor(assetId) ? 'etf' : 'stock', currency, sourceKey: key });
     const amount = total?.value.abs() ?? ZERO;
 
     if (/^(BUY|SELL)\b/.test(type) || /POSITION CLOSURE/.test(type)) {
@@ -55,7 +59,7 @@ export function parseRevolutStocks(headers: string[], rows: string[][], rate: Ra
       finishTrade(op, { qty, price, grossLocal: gross, grossEur: null, fee, reportedRate: fx, rate });
       if (currency !== 'EUR') op.settleCurrency = currency;
       if (/POSITION CLOSURE/.test(type)) review(op, 'Revolut cerró esta posición (exclusión o similar). Comprueba que es una venta.');
-      if (currency === 'USD') markets[ticker] = 'us';
+      if (currency === 'USD' && !securityFor(assetId)) markets[assetId] = 'us';
       ops.push(op);
     } else if (/CASH TOP-?UP/.test(type) || /CASH WITHDRAWAL/.test(type)) {
       if (currency === 'EUR') { addCount(ignored, 'Ingresos y retiradas en euros'); continue; }
@@ -67,7 +71,7 @@ export function parseRevolutStocks(headers: string[], rows: string[][], rate: Ra
       const op = stock('dividend');
       finishIncome(op, { grossLocal: amount, withheldLocal: ZERO, rate, rateValue: fx });
       if (currency !== 'EUR') op.settleCurrency = currency;
-      review(op, 'Revolut da el dividendo ya neto. Si te retuvieron, corrige el bruto y la retención con su informe anual.');
+      review(op, REVOLUT_DIVIDEND);
       ops.push(op);
     } else if (/FEE/.test(type)) {
       const op = baseOp({ broker: 'revolut', kind: 'fee', datetime, assetId: ticker || 'REVOLUT', assetName: ticker || 'Revolut', assetClass: 'other', currency, sourceKey: key, note: f(i.type) });

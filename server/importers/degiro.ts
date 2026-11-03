@@ -294,7 +294,6 @@ export function parseDegiroAccount(headers: string[], rawRows: string[][], rate:
       const op = baseOp({ broker: 'degiro', kind: 'fee', datetime: row.dt, assetId: fxProduct ? 'DEGIRO' : row.isin || 'DEGIRO', assetName: fxProduct ? 'DEGIRO' : row.product || 'DEGIRO', assetClass: 'other', currency: row.cur, sourceKey: keys.key('dg-fee', row.dt, row.isin, row.raw, row.amt), note: row.raw });
       op.feeClass = isCustody ? 'custody' : 'non_deductible';
       finishCash(op, row.amt.neg(), rate);
-      if (RE.connectivity.test(d)) review(op, 'Comisión de conectividad: la dejamos como no deducible por prudencia.');
       ops.push(op);
       continue;
     }

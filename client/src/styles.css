@@ -107,6 +107,9 @@ svg { flex-shrink: 0; }
 /* Superficies */
 .card { background: var(--surface); border-radius: var(--r-l); box-shadow: var(--shadow-card); padding: 20px 22px; }
 .card.flush { padding: 0; }
+.fifo-recalculate { display: grid; justify-items: start; gap: 12px; }
+.fifo-recalculate p { max-width: 58ch; line-height: 1.6; }
+.fifo-recalculate-status { width: 100%; padding-top: 12px; border-top: 1px solid var(--hairline); line-height: 1.5; }
 .card-title { padding: 18px 22px 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .hero { padding: 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; }
 .hero-label { color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }

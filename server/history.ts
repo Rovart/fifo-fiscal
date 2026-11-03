@@ -1,5 +1,6 @@
 import { D, Decimal, ZERO, cents } from '../shared/decimal.ts';
 import type { PerformanceData } from '../shared/types.ts';
+import { effectiveFifoSettings, fifoOperations } from '../shared/fifo-start.ts';
 import { db, allOps, getSettings, rateAt } from './db.ts';
 import { nextMonth } from './engine/dates.ts';
 import { runEngine } from './engine/fifo.ts';
@@ -10,8 +11,9 @@ import { assetsMap, today, withAssetMeta } from './service.ts';
 
 function monthlyEngine() {
   const assets = assetsMap();
-  const ops = withAssetMeta(allOps(), assets);
-  return { ops, res: runEngine({ ops, assets, settings: getSettings(), rateAt, today: today(), monthly: true }) };
+  const ops = fifoOperations(withAssetMeta(allOps(), assets), getSettings());
+  const res = runEngine({ ops, assets, settings: getSettings(), rateAt, today: today(), monthly: true });
+  return { ops: fifoOperations(ops, effectiveFifoSettings(getSettings(), res)), res };
 }
 
 const lastDay = (month: string) => new Date(Date.parse(`${nextMonth(month)}-01T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
@@ -25,7 +27,10 @@ interface Chart {
 /** Cierres mensuales en euros. Yahoo ajusta por splits posteriores: se deshace para que case con la cantidad de cada fecha. */
 async function monthlyCloses(symbol: string, from: string, to: string): Promise<Map<string, Decimal>> {
   const out = new Map<string, Decimal>();
-  const chart = (await yf.chart(symbol, { period1: `${from}-01`, period2: `${nextMonth(to)}-01`, interval: '1mo', events: 'split' }, { validateResult: false }).catch(() => null)) as Chart | null;
+  // Un activo vendido hace años también tiene precios ajustados por splits de
+  // después de la venta. Hay que consultar esos eventos para deshacer el ajuste.
+  const through = to > today().slice(0, 7) ? to : today().slice(0, 7);
+  const chart = (await yf.chart(symbol, { period1: `${from}-01`, period2: `${nextMonth(through)}-01`, interval: '1mo', events: 'split' }, { validateResult: false }).catch(() => null)) as Chart | null;
   if (!chart?.quotes?.length) return out;
   let currency = chart.meta?.currency ?? 'USD';
   const pence = currency === 'GBp' || currency === 'GBX';
@@ -35,6 +40,7 @@ async function monthlyCloses(symbol: string, from: string, to: string): Promise<
     if (q.close === null || q.close === undefined) continue;
     // Las filas van fechadas a principio de mes en la hora de cada bolsa: en UTC pueden caer el día anterior.
     const month = new Date(new Date(q.date).getTime() + 36 * 3600 * 1000).toISOString().slice(0, 7);
+    if (month < from || month > to) continue;
     const end = Date.parse(`${nextMonth(month)}-01T00:00:00Z`);
     let px = D(q.close).div(pence ? 100 : 1);
     for (const s of splits) if (new Date(s.date).getTime() >= end && s.denominator) px = px.times(s.numerator).div(s.denominator);
@@ -48,13 +54,13 @@ async function monthlyCloses(symbol: string, from: string, to: string): Promise<
 export async function refreshPriceHistory() {
   await refreshQuotes().catch(() => null);
   const { res } = monthlyEngine();
-  const ranges = new Map<string, { name: string; klass: string; from: string; to: string; unit: Decimal }>();
+  const ranges = new Map<string, { name: string; klass: string; from: string; to: string; unit: Decimal; months: Set<string> }>();
   for (const month of Object.keys(res.monthly ?? {}).sort()) {
     for (const p of res.monthly?.[month] ?? []) {
       if (p.class === 'fx' || D(p.quantity).lte(0)) continue;
       const r = ranges.get(p.assetId);
-      if (r) r.to = month;
-      else ranges.set(p.assetId, { name: p.assetName, klass: p.class, from: month, to: month, unit: D(p.costEur).div(D(p.quantity)) });
+      if (r) { r.to = month; r.months.add(month); }
+      else ranges.set(p.assetId, { name: p.assetName, klass: p.class, from: month, to: month, unit: D(p.costEur).div(D(p.quantity)), months: new Set([month]) });
     }
   }
   const known = new Map((db.prepare('SELECT asset_id, symbol FROM price_symbols WHERE symbol IS NOT NULL').all() as { asset_id: string; symbol: string }[]).map((r) => [r.asset_id, r.symbol]));
@@ -70,16 +76,19 @@ export async function refreshPriceHistory() {
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [assetId, r] = next;
       const remembered = known.get(assetId);
-      const candidates = remembered ? [remembered] : await symbolCandidates(assetId, r.name, r.klass);
+      const candidates = [...new Set([...(remembered ? [remembered] : []), ...await symbolCandidates(assetId, r.name, r.klass)])];
       // Un nombre puede dar otra clase del mismo fondo: el precio debe parecerse al de tu primera compra.
       let chosen: { symbol: string; closes: Map<string, Decimal> } | null = null;
+      let coverage = 0;
       for (const symbol of candidates) {
         const closes = await monthlyCloses(symbol, r.from, r.to);
         if (closes.size === 0) continue;
         const first = closes.get(r.from);
         const fits = !first || (first.div(r.unit).gt('0.6') && first.div(r.unit).lt('1.6'));
-        if (fits) { chosen = { symbol, closes }; break; }
-        chosen ??= { symbol, closes };
+        const covered = [...r.months].filter((m) => closes.has(m)).length;
+        if (fits && covered > coverage) { chosen = { symbol, closes }; coverage = covered; }
+        if (coverage === r.months.size) break;
+        // Si no coincide con el coste por unidad, no se usa otra clase por parecido de nombre.
       }
       if (chosen) {
         for (const [month, px] of chosen.closes) savePrice.run(assetId, month, px.toFixed(8));

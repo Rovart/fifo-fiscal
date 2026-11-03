@@ -378,6 +378,12 @@ describe('Revolut', () => {
     const buy = stocks.ops.find((o) => o.assetId === 'ORCL')!;
     expect(D(buy.fxRate!).toNumber()).toBeCloseTo(1.1, 6);
   });
+  it('aprovecha un ISIN explícito y no asigna mercado estadounidense a un ETF europeo en dólares', () => {
+    const csv = 'Date,Ticker,ISIN,Type,Quantity,Price per share,Total Amount,Currency,FX Rate\n2026-01-02T12:00:00,VUAA,IE00BFMXXD54,BUY,2,100,200,USD,1.08\n';
+    const parsed = parseFile(csv, rate);
+    expect(parsed.ops[0]).toMatchObject({ assetId: 'IE00BFMXXD54', assetClass: 'etf' });
+    expect(parsed.markets['IE00BFMXXD54']).toBeUndefined();
+  });
   it('el dividendo llega neto y se marca para revisar', () => {
     const d = stocks.ops.find((o) => o.kind === 'dividend')!;
     expect(d).toMatchObject({ assetId: 'AAPL', currency: 'USD', withholdingEur: '0.00' });

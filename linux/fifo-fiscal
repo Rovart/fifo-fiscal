@@ -1,0 +1,35 @@
+#!/bin/sh
+# Arranca una sola instancia local y abre la aplicación, también desde el menú.
+set -eu
+FIFO_DIR=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+cd "$FIFO_DIR"
+export PORT=5199
+export FIFO_DB="$FIFO_DIR/data/fifo.db"
+FIFO_URL="http://127.0.0.1:$PORT"
+mkdir -p data
+FIFO_LOG="$FIFO_DIR/data/server.log"
+
+fail() {
+  command -v notify-send >/dev/null 2>&1 && notify-send 'FIFO Fiscal' "No se pudo arrancar. Revisa $FIFO_LOG" || true
+  exit 1
+}
+ready() { curl --fail --silent --max-time 2 "$FIFO_URL/api/health" 2>/dev/null | grep -q 'fifo-fiscal'; }
+
+# El cierre del descriptor en el servidor libera el bloqueo del lanzador.
+exec 9>data/launcher.lock
+flock -x 9
+if ! ready; then
+  command -v node >/dev/null 2>&1 || fail
+  npm run build >>"$FIFO_LOG" 2>&1 || fail
+  nohup setsid node server/index.ts >>"$FIFO_LOG" 2>&1 </dev/null 9>&- &
+  FIFO_PID=$!
+  FIFO_TRIES=0
+  until ready; do
+    kill -0 "$FIFO_PID" 2>/dev/null || fail
+    FIFO_TRIES=$((FIFO_TRIES + 1))
+    [ "$FIFO_TRIES" -lt 80 ] || fail
+    sleep 0.25
+  done
+fi
+flock -u 9
+if [ "${FIFO_NO_OPEN:-0}" != 1 ]; then xdg-open "$FIFO_URL" >/dev/null 2>&1; fi

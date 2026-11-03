@@ -20,7 +20,7 @@ interface Quote { symbol: string | null; currency: string | null; price: string 
 
 export function Portfolio() {
   const { tick, go, changed, toast } = useApp();
-  const { data, reload } = useApi<{ lots: OpenLot[]; positions: Position[]; quotes: Record<string, Quote>; brokerNames: Record<string, { broker: Broker; name: string }[]>; today: string }>('/portfolio', `${tick}`);
+  const { data, reload } = useApi<{ lots: OpenLot[]; positions: Position[]; quotes: Record<string, Quote>; brokerNames: Record<string, { broker: Broker; name: string }[]>; today: string; balanceDifferences: { assetId: string; declared: string | null; computed: string }[] }>('/portfolio', `${tick}`);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
@@ -67,6 +67,7 @@ export function Portfolio() {
       </PageHead>
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
       {missing.length > 0 && <Callout tone="warn">Sin precio: {missing.map(niceName).join(', ')}.</Callout>}
+      {data.balanceDifferences.length > 0 && <Callout tone="warn">{data.balanceDifferences.map((p) => `${p.assetId}: ${qty(p.declared)} declarados · ${qty(p.computed)} en extractos`).join('. ')}. <button className="link" onClick={() => go('review')}>Conciliar saldo</button></Callout>}
       <div className="stat-grid">
         <div className="stat-card">
           <div className="l">Te ha costado <Help text={HELP.coste} /></div>

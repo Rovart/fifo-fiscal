@@ -89,7 +89,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
       }
       unknown = unknown.plus(unknownHere);
       // Una permuta no saca dinero: lo vendido entra en lo recibido.
-      if (d.class !== 'fx' && d.clave !== 'N') invested = invested.minus(D(d.proceedsEur).minus(unknownHere).times(weight(d.date)));
+      if (d.class !== 'fx' && (d.clave !== 'N' || ops.some((o) => o.id === d.opId && o.fifoLeg === 'swap_out'))) invested = invested.minus(D(d.proceedsEur).minus(unknownHere).times(weight(d.date)));
     }
     for (const o of ops) {
       if (o.kind === 'buy' && !o.deleted && o.assetClass !== ('fx' as string) && o.datetime.startsWith(String(y)) && o.totalEur) invested = invested.plus(D(o.totalEur).times(weight(o.datetime)));

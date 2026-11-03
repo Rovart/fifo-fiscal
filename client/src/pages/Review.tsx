@@ -1,4 +1,4 @@
-import { CheckCircle2, CircleAlert, CircleDashed, CircleDollarSign, Plus, Search } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleDashed, CircleDollarSign, Loader2, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { D, parseLocaleNumber } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type Issue, type Operation } from '../../../shared/types.ts';
@@ -176,7 +176,7 @@ function BalanceRow({ p, onSaved }: { p: PositionRow; onSaved: () => void }) {
   };
   return (
     <tr>
-      <td>{niceName(p.assetName)}<div className="small muted">{BROKER_LABEL[p.broker as Broker] ?? p.broker}</div></td>
+      <td>{niceName(p.assetName)}<div className="small muted">{p.broker === 'externo' ? 'Carteras propias' : BROKER_LABEL[p.broker as Broker] ?? p.broker}</div></td>
       <td className="r">{qty(p.computed)}</td>
       <td className="r">
         <input className="input" style={{ width: 120, minHeight: 32, padding: '4px 8px', textAlign: 'right' }} inputMode="decimal" placeholder="—" aria-label={`Saldo real de ${p.assetName}`} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => void save()} />
@@ -190,7 +190,7 @@ function BalanceRow({ p, onSaved }: { p: PositionRow; onSaved: () => void }) {
 }
 
 export function Review() {
-  const { tick, go, changed, year, setYear } = useApp();
+  const { tick, go, changed, year, setYear, state } = useApp();
   const { data } = useApi<Checks>(`/checks?year=${year}`, `${tick}`);
 
   const groups = useMemo(() => {
@@ -219,13 +219,14 @@ export function Review() {
     );
   }
   const hasErrors = groups.valuation.length + groups.lots.length + groups.fix.length > 0;
-  const clean = !hasErrors && groups.reasons.length === 0;
   const mismatches = data.positions.filter((p) => p.ok === false).length;
+  const clean = !hasErrors && groups.reasons.length === 0 && mismatches === 0;
 
   return (
     <>
       <PageHead title={`Revisar ${year}`} year sub={clean ? undefined : hasErrors ? 'Empieza por lo de arriba: cambia tus resultados.' : 'Mira cada grupo y confirma si está bien.'} />
-      {clean && (
+      {state.resolving && <div className="inline small muted" role="status"><Loader2 size={15} className="spin" /> Comprobando datos automáticamente…</div>}
+      {clean && !state.resolving && (
         <div className="card">
           <Empty icon={CheckCircle2} tone="gain" title={`${year} está en orden`}>
             <button className="btn primary" onClick={() => go('renta')}>Ir a Mi Renta</button>

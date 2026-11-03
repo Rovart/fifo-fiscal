@@ -10,6 +10,26 @@ import { applyTheme, loadTheme, type Theme } from '../theme.ts';
 
 const MARKET_LABEL: Record<Market, string> = { eu: 'Europa', us: 'EE. UU.', other: 'Otro' };
 
+function FifoStart() {
+  const { changed } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const recalculate = async () => {
+    setBusy(true); setMessage('');
+    try {
+      const result = await api<{ verified: boolean; excluded: number }>('/fifo/recalculate', { method: 'POST' });
+      setMessage(result.verified ? `FIFO actualizado · ${result.excluded === 1 ? '1 movimiento antiguo' : `${result.excluded} movimientos antiguos`} fuera del cálculo.` : 'No se ha podido comprobar un corte seguro. Se conserva el historial.');
+      changed();
+    } catch (e) { setMessage((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  return <div className="card fifo-recalculate" aria-busy={busy}>
+    <button className="btn" aria-describedby="fifo-recalculate-help" disabled={busy} onClick={() => void recalculate()}><RefreshCw size={15} className={busy ? 'spin' : ''} />{busy ? 'Comprobando…' : 'Recalcular FIFO'}</button>
+    <p id="fifo-recalculate-help" className="small muted">Revisa los ciclos cerrados y conserva solo el historial que aún afecta al cálculo.</p>
+    {message && <div className="small fifo-recalculate-status" role="status">{message}</div>}
+  </div>;
+}
+
 /** Revolut identifica por símbolo: con el ISIN, sus movimientos entran en el mismo FIFO que los de otros brókers. */
 function IsinField({ assetId }: { assetId: string }) {
   const { changed } = useApp();
@@ -39,13 +59,15 @@ export function Settings() {
   const [q, setQ] = useState('');
   const [rateMsg, setRateMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const first = useRef(true);
 
   // Se guarda solo: un botón de guardar es una cosa más que recordar.
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     const t = setTimeout(() => {
-      void api('/settings', { method: 'PUT', body: s }).then(() => changed('Guardado'));
+      const { fifoAutoStart: _auto, fifoStartDates: _dates, fifoConfirmedClosures: _closures, ...criteria } = s;
+      void api('/settings', { method: 'PUT', body: criteria }).then(() => { setSaveError(''); changed('Guardado'); }).catch((e: Error) => setSaveError(e.message));
     }, 500);
     return () => clearTimeout(t);
   }, [s]); // eslint-disable-line
@@ -76,6 +98,7 @@ export function Settings() {
   return (
     <>
       <PageHead title="Ajustes" />
+      {saveError && <p className="small loss" role="alert">{saveError}</p>}
       <div className="card flush">
         <div className="list">
           <div className="item">
@@ -151,6 +174,8 @@ export function Settings() {
         </div>
       </Disclosure>
 
+      <FifoStart />
+
       <Disclosure card title="Criterios fiscales (avanzado)">
         <div className="stack">
           <label className="field">
@@ -191,7 +216,7 @@ export function Settings() {
           </div>
         </div>
       </Disclosure>
-      <p className="small faint">Tus datos están en <code>{state.dbPath}</code>. Haz copia de ese archivo.</p>
+      <p className="small faint">Tus datos están en <code>{state.dbPath}</code>.</p>
     </>
   );
 }

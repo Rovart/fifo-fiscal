@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { D, Decimal, cents, toStr } from '../shared/decimal.ts';
 import { applyEdit, expectedTotal, reconcile } from '../shared/reconcile.ts';
+import { REVOLUT_ISIN } from '../shared/review.ts';
+import { effectiveFifoSettings, fifoOperations, fifoStartFor, fifoStarts } from '../shared/fifo-start.ts';
 import type { Asset, AssetClass, Broker, Market, Operation, Settings , Disposal, SaleSimulation, SalesSimulation } from '../shared/types.ts';
 import {
-  addHistory, allOps, bump, currentProfileId, db, getOp, getSettings, hasSourceKey, insertRates, latestRateDate, listAssets, putOp, rateAt, rev, saveAsset,
+  addHistory, allOps, bump, currentProfileId, db, getOp, getSettings, hasSourceKey, insertRates, latestRateDate, listAssets, putOp, rateAt, rev, saveAsset, saveSettings,
 } from './db.ts';
 import { runEngine } from './engine/fifo.ts';
 import { buildYearReport, issuesForYear, type YearReport } from './engine/report.ts';
@@ -42,17 +44,20 @@ export function brokerNames(): Record<string, { broker: Broker; name: string }[]
   return out;
 }
 
-let cache: { profile: string; rev: number; result: ReturnType<typeof runEngine> } | null = null;
+let cache: { profile: string; rev: number; date: string; result: ReturnType<typeof runEngine> } | null = null;
 
 export function engine() {
-  if (cache?.profile === currentProfileId() && cache.rev === rev()) return cache.result;
+  const date = today();
+  if (cache?.profile === currentProfileId() && cache.rev === rev() && cache.date === date) return cache.result;
   const assets = assetsMap();
-  const result = runEngine({ ops: withAssetMeta(allOps(), assets), assets, settings: getSettings(), rateAt, today: today() });
-  cache = { profile: currentProfileId(), rev: rev(), result };
+  const result = runEngine({ ops: withAssetMeta(allOps(), assets), assets, settings: getSettings(), rateAt, today: date });
+  cache = { profile: currentProfileId(), rev: rev(), date, result };
   return result;
 }
 
 export const report = (year: number): YearReport => buildYearReport(engine(), getSettings(), year);
+
+export const calculationOps = () => fifoOperations(withAssetMeta(allOps(), assetsMap()), effectiveFifoSettings(getSettings(), engine()));
 
 // ---- Importación ----
 export interface ImportPreview {
@@ -73,7 +78,20 @@ export interface ImportPreview {
 }
 
 const isIsin = (id: string) => /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(id);
-const NEEDS_ISIN = 'Revolut no da el ISIN. Si tienes este valor en otro bróker, escríbelo en Ajustes, en Mis activos, para que cuente en el mismo FIFO.';
+const NEEDS_ISIN = REVOLUT_ISIN;
+
+/** Un símbolo puede conservarse después de un canje: importa el ISIN vigente en cada fecha. */
+export function isinAtDate(isin: string, datetime: string, operations = allOps()): string {
+  let id = isin;
+  const seen = new Set<string>();
+  while (!seen.has(id)) {
+    seen.add(id);
+    const action = operations.find((o) => o.kind === 'isin_change' && o.counterAsset === id && o.datetime > datetime);
+    if (!action) break;
+    id = action.assetId;
+  }
+  return id;
+}
 
 /**
  * Revolut identifica por símbolo y el FIFO es por ISIN: se une si ya se conoce esa pareja,
@@ -90,13 +108,14 @@ function linkTickers(parsed: ParsedImport) {
     if (a && q.symbol && isIsin(a.id) && !known.has(q.symbol)) known.set(q.symbol, a);
   }
   const flagged = new Set<string>();
+  const operations = allOps();
   for (const op of parsed.ops) {
     if (op.assetClass === 'crypto' || !['buy', 'sell', 'dividend', 'split'].includes(op.kind)) continue;
     const a = known.get(op.assetId);
     if (a) {
       if (parsed.markets[op.assetId]) { parsed.markets[a.id] = parsed.markets[op.assetId] as Market; delete parsed.markets[op.assetId]; }
-      op.assetId = a.id;
-      op.assetName = a.name;
+      op.assetId = isinAtDate(a.id, op.datetime, operations);
+      op.assetName = assets.get(op.assetId)?.name ?? a.name;
     } else if (!isIsin(op.assetId) && !assets.has(op.assetId) && !flagged.has(op.assetId)) {
       flagged.add(op.assetId);
       review(op, NEEDS_ISIN);
@@ -105,24 +124,52 @@ function linkTickers(parsed: ParsedImport) {
 }
 
 /** Pasa todos los movimientos de un símbolo a su ISIN. */
-export function setAssetIsin(oldId: string, isinRaw: string) {
+export function setAssetIsin(oldId: string, isinRaw: string, reference?: { name: string; class?: AssetClass; source: string }) {
   const isin = isinRaw.trim().toUpperCase();
   if (!isIsin(isin)) throw new ValidationError('Eso no parece un ISIN: son 12 caracteres, como US0378331005.', null);
+  if (oldId === isin) return;
   const assets = assetsMap();
   const asset = assets.get(oldId);
   if (!asset) throw new ValidationError('Activo no encontrado.', null);
+  const operations = allOps(true);
   db.exec('BEGIN');
   try {
-    for (const op of allOps(true)) {
+    for (const op of operations) {
       if (op.assetId !== oldId && op.counterAsset !== oldId) continue;
       const next: Operation = { ...op, reviewReasons: op.reviewReasons?.filter((r) => r !== NEEDS_ISIN) };
-      if (op.assetId === oldId) next.assetId = isin;
-      if (op.counterAsset === oldId) next.counterAsset = isin;
+      const datedIsin = isinAtDate(isin, op.datetime, operations.filter((o) => !o.deleted));
+      if (op.assetId === oldId) next.assetId = datedIsin;
+      if (op.counterAsset === oldId) next.counterAsset = datedIsin;
+      if (op.original) next.original = {
+        ...op.original,
+        ...(op.original.assetId === oldId ? { assetId: datedIsin } : {}),
+        ...(op.original.counterAsset === oldId ? { counterAsset: datedIsin } : {}),
+        reviewReasons: op.original.reviewReasons?.filter((r) => r !== NEEDS_ISIN),
+      };
+      if (reference) next.resolutions = [...(op.resolutions ?? []), { code: 'isin', at: new Date().toISOString(), source: reference.source, detail: `${oldId} → ${datedIsin}` }];
       addHistory(op.id, `ISIN ${isin} en lugar de ${oldId}`, op, next);
       putOp(next);
     }
-    saveAsset({ ...(assets.get(isin) ?? { ...asset, id: isin }), ticker: oldId });
+    saveAsset({ ...(assets.get(isin) ?? { ...asset, id: isin, name: reference?.name || asset.name, class: reference?.class ?? asset.class }), ticker: oldId });
+    // Solo traslada precios si no hay un cambio de unidad/ISIN entre medias.
+    // Las series de un símbolo actual no son la cotización del ISIN anterior a un canje.
+    const changedUnits = operations.some((o) => o.kind === 'isin_change' && (o.assetId === isin || o.counterAsset === isin));
+    if (!changedUnits) {
+      db.prepare('INSERT OR IGNORE INTO quotes SELECT ?, symbol, currency, price, price_eur, at, fetched_at FROM quotes WHERE asset_id = ?').run(isin, oldId);
+      db.prepare('INSERT OR IGNORE INTO price_history SELECT ?, month, price_eur FROM price_history WHERE asset_id = ?').run(isin, oldId);
+      db.prepare('INSERT OR IGNORE INTO price_symbols SELECT ?, symbol, fetched_at FROM price_symbols WHERE asset_id = ?').run(isin, oldId);
+    }
+    db.prepare('DELETE FROM quotes WHERE asset_id = ?').run(oldId);
+    db.prepare('DELETE FROM price_history WHERE asset_id = ?').run(oldId);
+    db.prepare('DELETE FROM price_symbols WHERE asset_id = ?').run(oldId);
     db.prepare('DELETE FROM assets WHERE id = ?').run(oldId);
+    const settings = getSettings();
+    const dates = { ...settings.fifoStartDates };
+    if (dates[oldId]) {
+      dates[isin] = [dates[isin], dates[oldId]].filter(Boolean).sort().at(-1)!;
+      delete dates[oldId];
+      saveSettings({ ...settings, fifoStartDates: dates });
+    }
     db.exec('COMMIT');
     bump();
   } catch (e) {
@@ -494,12 +541,13 @@ export async function priceEur(asset: string, datetime: string): Promise<Decimal
 }
 
 const missingValue = (o: Operation) =>
-  !o.deleted && o.assetClass === 'crypto' && !o.grossEur && ['swap', 'staking', 'reward', 'sell', 'buy'].includes(o.kind);
+  !o.deleted && o.fifoLeg !== 'cash_only' && o.assetClass === 'crypto' && !o.grossEur && ['swap', 'staking', 'reward', 'sell', 'buy'].includes(o.kind);
 
-export const countMissingValues = () => allOps().filter(missingValue).length;
+export const countMissingValues = () => calculationOps().filter(missingValue).length;
 
 export async function resolveCryptoValues(limit = 40) {
-  const pending = allOps().filter(missingValue);
+  const active = new Set(calculationOps().filter(missingValue).map((o) => o.id));
+  const pending = allOps().filter((o) => active.has(o.id));
   let done = 0;
   const failed: string[] = [];
   for (const op of pending.slice(0, limit)) {
@@ -531,6 +579,11 @@ export function simulateSales(p: { sales: { assetId: string; quantity: string; p
   const settings = getSettings();
   const ops = withAssetMeta(allOps(), assets);
   const sold = p.sales.filter((s) => D(s.quantity).gt(0));
+  const starts = fifoStarts(ops, effectiveFifoSettings(settings, engine()));
+  for (const sale of sold) {
+    const start = fifoStartFor(starts, sale.assetId);
+    if (start && p.date < start) throw new ValidationError(`La simulación es anterior al inicio del FIFO de ${sale.assetId} (${start}).`, null);
+  }
   const sims = sold.map((s): Operation => {
     const ref = ops.find((o) => o.assetId === s.assetId || o.counterAsset === s.assetId);
     const asset = assets.get(s.assetId);
@@ -589,10 +642,12 @@ export function pendingByYear(): Record<number, { errors: number; warnings: numb
 export function checks(year?: number) {
   const res = engine();
   const issues = year ? issuesForYear(res, year) : res.issues;
-  const balances = db.prepare('SELECT broker, asset_id, quantity, as_of, source FROM balances').all() as { broker: string; asset_id: string; quantity: string; as_of: string | null; source: string | null }[];
+  const starts = fifoStarts(allOps(), effectiveFifoSettings(getSettings(), res));
+  const balances = (db.prepare('SELECT broker, asset_id, quantity, as_of, source FROM balances').all() as { broker: string; asset_id: string; quantity: string; as_of: string | null; source: string | null }[])
+    .filter((b) => !b.as_of || b.as_of.slice(0, 10) >= (fifoStartFor(starts, b.asset_id) ?? ''));
   const positions = res.positions;
   const rows = positions.flatMap((p) =>
-    Object.entries(p.byBroker).filter(([b]) => b !== 'externo').map(([broker, qty]) => {
+    Object.entries(p.byBroker).filter(([b]) => b !== 'externo' || balances.some((v) => v.broker === 'externo' && v.asset_id === p.assetId)).map(([broker, qty]) => {
       const declared = balances.find((b) => b.broker === broker && b.asset_id === p.assetId);
       const diff = declared ? D(qty).minus(D(declared.quantity)) : null;
       return {

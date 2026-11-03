@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2';
+import { securityFor } from './securities.ts';
 import { D, type Decimal } from '../shared/decimal.ts';
 import { db, listAssets, rateAt } from './db.ts';
 import { engine, priceEur, refreshEcbRates, today } from './service.ts';
@@ -25,28 +26,21 @@ async function searchSymbols(query: string, isin: string): Promise<string[]> {
   return home ? [...list.filter((x) => home.test(x)), ...list.filter((x) => !home.test(x))] : list;
 }
 
-const searchSymbol = async (query: string, isin: string): Promise<string | null> => (await searchSymbols(query, isin))[0] ?? null;
-
-/** ISIN que el buscador de Yahoo no reconoce y que por nombre darían otra clase de acción. */
+/** Clases de Alphabet que el buscador confunde por nombre. */
 const KNOWN: Record<string, string> = { US02079K3059: 'GOOGL', US02079K1079: 'GOOG' };
-
-/** Busca por ISIN y, si Yahoo no lo conoce, por nombre. */
-async function resolveSymbol(assetId: string, name: string, klass: string): Promise<string | null> {
-  if (klass === 'crypto') return `${assetId}-EUR`;
-  if (KNOWN[assetId]) return KNOWN[assetId];
-  // Sin ISIN, como en Revolut, el identificador ya es el símbolo.
-  if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(assetId)) return assetId;
-  const byIsin = await searchSymbol(assetId, assetId).catch(() => null);
-  if (byIsin) return byIsin;
-  const clean = name.replace(/\(.*?\)/g, ' ').replace(/\s[-–]\s.*$/, '').trim();
-  return clean ? searchSymbol(clean, assetId).catch(() => null) : null;
-}
 
 /** Símbolos posibles en orden de preferencia: no todos los que da el buscador tienen histórico. */
 export async function symbolCandidates(assetId: string, name: string, klass: string): Promise<string[]> {
   if (klass === 'crypto') return [`${assetId}-EUR`];
   if (KNOWN[assetId]) return [KNOWN[assetId]];
-  if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(assetId)) return [assetId];
+  const verified = securityFor(assetId);
+  if (verified) return verified.symbols;
+  if (!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(assetId)) {
+    // Un ticker europeo suele necesitar el sufijo de su bolsa. Solo acepta el
+    // mismo ticker exacto: el buscador también devuelve valores parecidos.
+    const found = await searchSymbols(assetId, '').catch(() => [] as string[]);
+    return [...new Set([assetId, ...found.filter((s) => s.split('.')[0] === assetId)])];
+  }
   const list = (query: string) => searchSymbols(query, assetId).catch(() => [] as string[]);
   const clean = name.replace(/\(.*?\)/g, ' ').replace(/\s[-–]\s.*$/, '').trim();
   const short = clean.replace(/\s+(UCITS|ETF|ACC|DIST|CLASS)\b.*$/i, '').trim();
@@ -77,41 +71,45 @@ export async function refreshQuotes() {
   const positions = engine().positions.filter((p) => p.class !== 'fx' && D(p.quantity).gt(0));
   const known = storedQuotes();
   const assets = new Map(listAssets().map((a) => [a.id, a]));
-  const symbols = new Map<string, string>();
-  for (const p of positions) {
-    const klass = assets.get(p.assetId)?.class ?? p.class;
-    const cached = known[p.assetId]?.symbol;
-    const sym = KNOWN[p.assetId] ?? (cached && cached !== 'Kraken' ? cached : await resolveSymbol(p.assetId, p.assetName, klass));
-    if (sym) symbols.set(p.assetId, sym);
-  }
-  const quotes = symbols.size
-    ? ((await yf.quote([...new Set(symbols.values())], {}, { validateResult: false })) as unknown as { symbol: string; currency?: string; regularMarketPrice?: number; regularMarketTime?: Date | string | number }[])
-    : [];
-  const bySymbol = new Map(quotes.map((q) => [q.symbol, q]));
   const now = new Date().toISOString();
   const save = db.prepare(`INSERT INTO quotes (asset_id, symbol, currency, price, price_eur, at, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(asset_id) DO UPDATE SET symbol = excluded.symbol, currency = excluded.currency, price = excluded.price, price_eur = excluded.price_eur, at = excluded.at, fetched_at = excluded.fetched_at`);
   const missing: string[] = [];
-  for (const p of positions) {
-    const klass = assets.get(p.assetId)?.class ?? p.class;
-    const sym = symbols.get(p.assetId) ?? null;
-    const q = sym ? bySymbol.get(sym) : undefined;
-    if (q?.regularMarketPrice && q.currency) {
-      const price = D(q.regularMarketPrice);
-      const eur = toEur(price, q.currency);
-      const at = q.regularMarketTime ? new Date(q.regularMarketTime).toISOString() : now;
-      save.run(p.assetId, sym, q.currency, price.toFixed(), eur ? eur.toFixed(8) : null, at, now);
-      if (!eur) missing.push(p.assetName);
-      continue;
+  const queue = [...positions];
+  const work = async () => {
+    for (let p = queue.shift(); p; p = queue.shift()) {
+      const klass = assets.get(p.assetId)?.class ?? p.class;
+      const cached = known[p.assetId];
+      const candidates = [...new Set([
+        ...(cached?.priceEur && cached.symbol && cached.symbol !== 'Kraken' ? [cached.symbol] : []),
+        ...await symbolCandidates(p.assetId, p.assetName, klass),
+      ])];
+      let found = false;
+      for (const sym of candidates) {
+        const q = await yf.quote(sym, {}, { validateResult: false }).catch(() => null);
+        if (!q?.regularMarketPrice || !q.currency) continue;
+        const pence = q.currency === 'GBp' || q.currency === 'GBX';
+        const currency = pence ? 'GBP' : q.currency;
+        const price = D(q.regularMarketPrice).div(pence ? 100 : 1);
+        const eur = toEur(price, currency);
+        const at = q.regularMarketTime ? new Date(q.regularMarketTime).toISOString() : now;
+        save.run(p.assetId, sym, currency, price.toFixed(), eur ? eur.toFixed(8) : null, at, now);
+        if (!eur) missing.push(p.assetName);
+        found = true;
+        break;
+      }
+      if (found) continue;
+      // Criptomonedas que Yahoo no tiene: su último precio en Kraken.
+      const kraken = klass === 'crypto' ? await priceEur(p.assetId, now.slice(0, 19)).catch(() => null) : null;
+      if (kraken) {
+        save.run(p.assetId, 'Kraken', 'EUR', kraken.toDecimalPlaces(8).toFixed(), kraken.toFixed(8), now, now);
+      } else {
+        // Un fallo puntual del proveedor no borra una cotización ya disponible.
+        if (!known[p.assetId]?.priceEur) save.run(p.assetId, null, null, null, null, null, now);
+        missing.push(p.assetName);
+      }
     }
-    // Criptomonedas que Yahoo no tiene: su último precio en Kraken.
-    const kraken = klass === 'crypto' ? await priceEur(p.assetId, now.slice(0, 19)).catch(() => null) : null;
-    if (kraken) {
-      save.run(p.assetId, 'Kraken', 'EUR', kraken.toDecimalPlaces(8).toFixed(), kraken.toFixed(8), now, now);
-    } else {
-      save.run(p.assetId, null, null, null, null, null, now);
-      missing.push(p.assetName);
-    }
-  }
+  };
+  await Promise.all(Array.from({ length: 4 }, work));
   return { updated: positions.length - missing.length, missing, at: now };
 }

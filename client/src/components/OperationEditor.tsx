@@ -470,6 +470,10 @@ export function OperationEditor({ op, prefill, onClose, onSaved }: Props) {
                   )}
                 </div>
               </Disclosure>
+
+              {!!draft.resolutions?.length && <Disclosure title="Completado automáticamente">
+                <div className="stack small muted">{draft.resolutions.map((r, i) => <div key={i}><div>{r.detail}</div>{/^https:\/\//.test(r.source) && <a className="link" href={r.source} target="_blank" rel="noreferrer">Ver fuente</a>}</div>)}</div>
+              </Disclosure>}
               {error && <Callout tone="error">{error}</Callout>}
             </div>
 
