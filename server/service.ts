@@ -547,16 +547,41 @@ async function krakenFirstTrade(pair: string, since: number): Promise<Decimal | 
   return D(first[0]);
 }
 
+const krakenPairs = (asset: string) => {
+  const code = KRAKEN_CODE[krakenAsset(asset)] ?? krakenAsset(asset);
+  return [`${code}EUR`, `${code}USD`];
+};
+const hourOf = (datetime: string) => {
+  const ts = madridToUnix(datetime);
+  return ts - (ts % 3600);
+};
+
+// Pares que Kraken cotiza hoy: así no se pregunta uno a uno por monedas que nunca tuvo.
+let listedPairs: Set<string> | null = null;
+export async function krakenListed(asset: string): Promise<boolean> {
+  if (!listedPairs) {
+    const data = (await fetch('https://api.kraken.com/0/public/AssetPairs').then((r) => r.json()).catch(() => null)) as { result?: Record<string, { altname: string }> } | null;
+    if (!data?.result) return false;
+    listedPairs = new Set(Object.values(data.result).map((p) => p.altname));
+  }
+  return krakenPairs(asset).some((p) => listedPairs!.has(p));
+}
+
+/** Sin precio porque Kraken no tuvo operaciones cerca, no por un fallo de red: se puede recordar. */
+export function krakenNoTrade(asset: string, datetime: string): boolean {
+  const hour = hourOf(datetime);
+  return krakenPairs(asset).every((pair) => unknownPairs.has(pair) || !!gaps.get(pair)?.some((g) => hour >= g.from && hour + NEAR < g.to));
+}
+
 /** Precio en euros del activo en el instante. Usa EUR o, si no existe el par, USD al tipo del BCE. */
 export async function priceEur(asset: string, datetime: string): Promise<Decimal | null> {
-  const ts = madridToUnix(datetime);
-  const hour = ts - (ts % 3600);
+  const hour = hourOf(datetime);
   const cached = db.prepare('SELECT eur FROM crypto_prices WHERE asset = ? AND ts = ?').get(asset, hour) as { eur: string } | undefined;
   if (cached) return D(cached.eur);
-  const code = KRAKEN_CODE[krakenAsset(asset)] ?? krakenAsset(asset);
-  let price = await krakenFirstTrade(`${code}EUR`, hour);
+  const [eurPair, usdPair] = krakenPairs(asset) as [string, string];
+  let price = await krakenFirstTrade(eurPair, hour);
   if (!price) {
-    const usd = await krakenFirstTrade(`${code}USD`, hour);
+    const usd = await krakenFirstTrade(usdPair, hour);
     const r = rateAt('USD', datetime.slice(0, 10));
     if (usd && r) price = usd.div(r);
   }

@@ -403,8 +403,8 @@ export interface PerformanceData {
   totalResultEur: string;
   /** Rentabilidades de cada año encadenadas. */
   totalReturnPct: string | null;
-  /** Activos sin precio: cuentan a su coste, sin ganancia ni pérdida. */
-  missingPrices: string[];
+  /** Activos sin precio: cuentan a su coste, sin ganancia ni pérdida. now: lo que tienes hoy; byYear: los cierres que usa cada año. */
+  missingPrices: { now: string[]; byYear: Record<number, string[]> };
   hasHistory: boolean;
   fetchedAt: string | null;
 }

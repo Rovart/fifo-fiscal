@@ -58,7 +58,12 @@ describe('Desempeño', () => {
   it('sin precio cuenta a su coste y lo indica', () => {
     const r = computePerformance(res, ops, book({}), '2026-03-15');
     expect(r.years.find((x) => x.year === 2024)).toMatchObject({ unrealizedEndEur: '0.00', resultEur: '0.00' });
-    expect(r.missingPrices).toEqual(['Apple']);
+    expect(r.missingPrices.byYear[2024]).toEqual(['Apple']);
+  });
+  it('solo avisa de los cierres que usa cada año', () => {
+    const sold = [trade('buy', '2023-05-02', '10', '100'), trade('sell', '2024-06-03', '10', '120')];
+    const r = computePerformance(engine(sold, '2026-03-15'), sold, book({}), '2026-03-15');
+    expect(r.missingPrices).toEqual({ now: [], byYear: { 2023: ['Apple'], 2024: ['Apple'] } });
   });
   it('usa el último precio de hasta dos meses antes si falta el del mes', () => {
     const r = computePerformance(res, ops, book({ '2024-10': '120' }), '2026-03-15');

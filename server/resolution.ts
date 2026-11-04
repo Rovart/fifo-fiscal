@@ -153,7 +153,7 @@ export function scheduleResolution(force = false) {
     await valueImportedCrypto();
     const { performance, refreshPriceHistory } = await import('./history.ts');
     const prices = performance();
-    if (resolved.identities || !prices.hasHistory || prices.missingPrices.length) await refreshPriceHistory();
+    if (resolved.identities || !prices.hasHistory || prices.missingPrices.now.length) await refreshPriceHistory();
   }).catch((e: unknown) => console.error('No se pudo completar la revisión automática:', (e as Error).message)).finally(() => {
     job.running = false;
     if (job.rerun) withProfile(id, () => scheduleResolution(true));

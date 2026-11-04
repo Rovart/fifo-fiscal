@@ -43,6 +43,7 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS quotes (asset_id TEXT PRIMARY KEY, symbol TEXT, currency TEXT, price TEXT, price_eur TEXT, at TEXT, fetched_at TEXT);
   CREATE TABLE IF NOT EXISTS price_history (asset_id TEXT NOT NULL, month TEXT NOT NULL, price_eur TEXT NOT NULL, PRIMARY KEY (asset_id, month));
   CREATE TABLE IF NOT EXISTS price_symbols (asset_id TEXT PRIMARY KEY, symbol TEXT, fetched_at TEXT);
+  CREATE TABLE IF NOT EXISTS price_gaps (asset_id TEXT NOT NULL, month TEXT NOT NULL, PRIMARY KEY (asset_id, month));
   CREATE TABLE IF NOT EXISTS fx_rates (date TEXT NOT NULL, currency TEXT NOT NULL, rate TEXT NOT NULL, PRIMARY KEY (date, currency));
   CREATE TABLE IF NOT EXISTS crypto_prices (asset TEXT NOT NULL, ts INTEGER NOT NULL, eur TEXT NOT NULL, PRIMARY KEY (asset, ts));
   CREATE TABLE IF NOT EXISTS balances (broker TEXT NOT NULL, asset_id TEXT NOT NULL, quantity TEXT NOT NULL, as_of TEXT, source TEXT, PRIMARY KEY (broker, asset_id));

@@ -18,7 +18,9 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
   const thisMonth = today.slice(0, 7);
   const thisYear = Number(today.slice(0, 4));
   const monthly = res.monthly ?? {};
-  const missing = new Set<string>();
+  // Cada año usa su cierre y el del anterior; el total, solo el de hoy. Los meses intermedios solo dibujan el gráfico.
+  const missingAt = new Map<string, Map<string, Decimal>>();
+  const closeValue = new Map<string, Decimal>();
 
   const priceFor = (assetId: string, month: string): Decimal | null => {
     if (month === thisMonth) {
@@ -33,11 +35,11 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
     return null;
   };
   /** Sin precio cuenta a su coste: ni gana ni pierde. */
-  const valueOf = (p: Position, month: string): Decimal => {
+  const valueOf = (p: Position, month: string, track = false): Decimal => {
     const px = priceFor(p.assetId, month);
     if (px) return D(p.quantity).times(px);
     // Un resto de pocos euros no merece un aviso.
-    if (D(p.costEur).gte(5)) missing.add(p.assetName);
+    if (track && D(p.costEur).gte(5)) missingAt.set(month, (missingAt.get(month) ?? new Map()).set(p.assetName, D(p.costEur)));
     return D(p.costEur);
   };
   const held = (month: string) => (monthly[month] ?? []).filter((p) => p.class !== 'fx' && D(p.quantity).gt(0));
@@ -108,7 +110,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
 
     const close = closeOf(y);
     for (const p of held(close)) {
-      const v = valueOf(p, close);
+      const v = valueOf(p, close, true);
       value = value.plus(v);
       cost = cost.plus(D(p.costEur));
       note(p.assetId, p.assetName, p.class);
@@ -116,6 +118,7 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
       t.value = v;
       t.unrealizedEnd = v.minus(D(p.costEur));
     }
+    closeValue.set(close, value);
     const unrealizedEnd = value.minus(cost);
     const change = unrealizedEnd.minus(previousEnd);
     const result = realized.plus(income).minus(fees).plus(change);
@@ -136,6 +139,12 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
     previousEnd = unrealizedEnd;
     previousValue = value;
   }
+
+  /** Lo que pesa menos del 0,5 % del total en ese cierre apenas cambia el resultado: no merece un aviso. */
+  const unpricedAt = (close: string) => {
+    const floor = (closeValue.get(close) ?? ZERO).times('0.005');
+    return [...(missingAt.get(close) ?? [])].filter(([, cost]) => cost.gte(floor)).map(([name]) => name).sort();
+  };
 
   const assetRows: PerformanceAsset[] = [...perAsset.entries()].map(([assetId, by]) => {
     const meta = assets.get(assetId);
@@ -159,6 +168,11 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
   return {
     years, assets: assetRows, months, totalResultEur: cents(totalResult),
     totalReturnPct: anyReturn ? compound.minus(1).times(100).toDecimalPlaces(2).toFixed(2) : null,
-    missingPrices: [...missing].sort(),
+    missingPrices: {
+      now: unpricedAt(thisMonth),
+      byYear: Object.fromEntries(allYears
+        .map((y) => [y, [...new Set([...unpricedAt(closeOf(y)), ...unpricedAt(closeOf(y - 1))])].sort()] as const)
+        .filter(([, names]) => names.length > 0)),
+    },
   };
 }

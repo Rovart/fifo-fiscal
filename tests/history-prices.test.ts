@@ -25,6 +25,32 @@ describe('Cobertura del histórico de precios', () => {
     await refreshPriceHistory();
     expect(db.prepare('SELECT symbol FROM price_symbols WHERE asset_id = ?').get('EURO')).toMatchObject({ symbol: 'EURO.DE' });
   });
+  it('completa con Kraken los meses de cripto sin precio en Yahoo y recuerda los que no tienen operaciones', async () => {
+    db.exec('DELETE FROM price_gaps');
+    putOp(trade('buy', '2016-06-10', '1', '10', { assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', broker: 'kraken' }));
+    putOp(trade('sell', '2016-08-05', '1', '12', { assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', broker: 'kraken' }));
+    saveAsset({ id: 'ETH', name: 'Ethereum', class: 'crypto', market: 'other' });
+    mocks.candidates.mockResolvedValue([]);
+    const july = Date.parse('2016-07-31T21:00:00Z') / 1000;
+    const fetch = vi.fn(async (url: string) => {
+      if (url.includes('AssetPairs')) return Response.json({ error: [], result: { XETHZEUR: { altname: 'ETHEUR' }, XETHZUSD: { altname: 'ETHUSD' } } });
+      const since = Number(new URL(url).searchParams.get('since'));
+      // Junio tiene operaciones al cierre; julio, no hasta días después.
+      const time = since >= july ? since + 3 * 86400 : since + 600;
+      return Response.json({ error: [], result: { XETHZEUR: [['11.5', '1', time]], last: '0' } });
+    });
+    vi.stubGlobal('fetch', fetch);
+    try {
+      await refreshPriceHistory();
+      expect(db.prepare('SELECT month, price_eur FROM price_history WHERE asset_id = ?').all('ETH')).toEqual([{ month: '2016-06', price_eur: '11.50000000' }]);
+      expect(db.prepare('SELECT month FROM price_gaps WHERE asset_id = ?').all('ETH')).toEqual([{ month: '2016-07' }]);
+      const calls = fetch.mock.calls.length;
+      await refreshPriceHistory();
+      expect(fetch.mock.calls.length).toBe(calls);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }, 20_000);
   it('deshace también splits posteriores al cierre de una posición antigua', async () => {
     insert(); putOp(trade('sell', '2025-03-01', '1', '120', { assetId: 'EURO' }));
     mocks.candidates.mockResolvedValue(['EURO.DE']);

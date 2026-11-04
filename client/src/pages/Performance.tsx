@@ -132,12 +132,15 @@ export function Performance() {
   const updated = data.fetchedAt ? ` Precios del ${new Date(data.fetchedAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}.` : '';
   const closing = period === null || period === view.thisYear ? 'Si vendieras hoy' : `A 31 de diciembre de ${period}`;
   const openTotal = view.open.reduce((s, r) => s + r.value, 0);
+  const unpriced = period === null ? data.missingPrices.now : data.missingPrices.byYear[period] ?? [];
 
   return (
     <>
       <PageHead title="Desempeño" sub={`Antes de impuestos.${updated}`}>{button}</PageHead>
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
-      {data.missingPrices.length > 0 && <Callout tone="warn">Sin precio, cuentan a su coste: {data.missingPrices.map(niceName).join(', ')}.</Callout>}
+      {unpriced.length > 0 && (
+        <Callout tone="warn" title={<span className="inline">{unpriced.length === 1 ? `${niceName(unpriced[0])} sin precio` : `${unpriced.length} activos sin precio`}{period === null ? ' hoy' : ` en ${period}`}: cuenta{unpriced.length === 1 ? '' : 'n'} a su coste {unpriced.length > 1 && <Help text={unpriced.map(niceName).join(', ')} />}</span>} />
+      )}
 
       <div className="perf-filter">
         <Segmented<string>

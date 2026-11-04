@@ -7,7 +7,7 @@ import { runEngine } from './engine/fifo.ts';
 import { computePerformance } from './engine/performance.ts';
 import { buildYearReport } from './engine/report.ts';
 import { refreshQuotes, storedQuotes, symbolCandidates, yf } from './quotes.ts';
-import { assetsMap, today, withAssetMeta } from './service.ts';
+import { assetsMap, krakenListed, krakenNoTrade, priceEur, today, withAssetMeta } from './service.ts';
 
 function monthlyEngine() {
   const assets = assetsMap();
@@ -48,6 +48,31 @@ async function monthlyCloses(symbol: string, from: string, to: string): Promise<
     if (rate) out.set(month, px.div(rate));
   }
   return out;
+}
+
+const KRAKEN_BUDGET_MS = 60_000;
+
+/** Yahoo no tiene cripto antes de finales de 2017 ni monedas desaparecidas: Kraken cubre las que aún cotiza.
+ * Un mes sin operaciones cerca del cierre se recuerda para no volver a preguntarlo. */
+async function backfillFromKraken(ranges: Map<string, { klass: string; months: Set<string> }>) {
+  const thisMonth = today().slice(0, 7);
+  const known = new Set((db.prepare("SELECT asset_id || '|' || month AS k FROM price_history UNION SELECT asset_id || '|' || month FROM price_gaps").all() as { k: string }[]).map((r) => r.k));
+  const savePrice = db.prepare('INSERT INTO price_history (asset_id, month, price_eur) VALUES (?, ?, ?) ON CONFLICT(asset_id, month) DO UPDATE SET price_eur = excluded.price_eur');
+  const saveGap = db.prepare('INSERT OR IGNORE INTO price_gaps (asset_id, month) VALUES (?, ?)');
+  const started = Date.now();
+  for (const [assetId, r] of ranges) {
+    if (r.klass !== 'crypto') continue;
+    const todo = [...r.months].filter((m) => m < thisMonth && !known.has(`${assetId}|${m}`)).sort();
+    if (todo.length === 0 || !(await krakenListed(assetId))) continue;
+    for (const month of todo) {
+      if (Date.now() - started > KRAKEN_BUDGET_MS) return;
+      const at = `${lastDay(month)}T23:00:00`;
+      let px;
+      try { px = await priceEur(assetId, at); } catch { return; }
+      if (px) savePrice.run(assetId, month, px.toFixed(8));
+      else if (krakenNoTrade(assetId, at)) saveGap.run(assetId, month);
+    }
+  }
 }
 
 /** Solo se envían a Yahoo ISIN y símbolos, nunca cantidades ni importes. */
@@ -101,6 +126,7 @@ export async function refreshPriceHistory() {
     }
   };
   await Promise.all(Array.from({ length: 5 }, work));
+  await backfillFromKraken(ranges);
   return { assets: ranges.size - missing.length, missing, at: now };
 }
 
