@@ -11,7 +11,7 @@ import { applyTheme, loadTheme, type Theme } from '../theme.ts';
 
 const MARKET_LABEL: Record<Market, string> = { eu: 'Europa', us: 'EE. UU.', other: 'Otro' };
 
-const BACKUP_KIND: Record<Backup['kind'], string> = { daily: 'Diaria', manual: 'Hecha por ti', 'antes-de-restaurar': 'Antes de restaurar' };
+const BACKUP_KIND: Record<Backup['kind'], string> = { daily: 'Diaria', manual: 'Manual', 'antes-de-restaurar': 'Antes de restaurar' };
 const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
 const when = (at: string) => `${dateShort(at.slice(0, 10))}, ${at.slice(11, 16)}`;
 
@@ -45,16 +45,14 @@ function Backups() {
     <div className="card">
       <div className="row-between">
         <div>
-          <h2>Copias de seguridad</h2>
-          <div className="small muted" style={{ marginTop: 2 }}>
-            {last ? `La última es del ${when(last.at)}.` : 'Aún no hay ninguna.'} Cada día que abres la aplicación se guardan todas las cuentas: las de la última semana y una por mes del último año.
-          </div>
+          <h2 className="inline">Copias de seguridad <Help text={`${HELP.copias} Están en ${data.dir}.`} /></h2>
+          <div className="small muted" style={{ marginTop: 2 }}>{last ? `Última: ${when(last.at)}` : 'Ninguna todavía'}</div>
         </div>
-        <button className="btn" disabled={busy} onClick={() => void run(() => api('/backups', { method: 'POST' }), 'Copia hecha')}><Save size={15} /> {busy && !restoring ? 'Guardando…' : 'Hacer una ahora'}</button>
+        <button className="btn small" disabled={busy} onClick={() => void run(() => api('/backups', { method: 'POST' }), 'Copia hecha')}><Save size={14} /> {busy && !restoring ? 'Guardando…' : 'Hacer copia'}</button>
       </div>
       {error && !restoring && <p className="small loss" role="alert">{error}</p>}
       {mine.length > 0 && (
-        <Disclosure title={`Restaurar esta cuenta (${mine.length})`} flush>
+        <div style={{ marginTop: 10 }}><Disclosure title={`Restaurar (${mine.length})`} flush>
           <div className="list">
             {mine.map((b) => (
               <div className="item" key={b.id}>
@@ -62,16 +60,15 @@ function Backups() {
                   <div className="title">{when(b.at)}</div>
                   <div className="sub">{BACKUP_KIND[b.kind]} · {size(b.bytes)}</div>
                 </div>
-                <button className="btn small" disabled={busy} onClick={() => { setError(''); setRestoring(b); }}><ArchiveRestore size={14} /> Restaurar</button>
+                <button className="btn small quiet" disabled={busy} onClick={() => { setError(''); setRestoring(b); }}><ArchiveRestore size={14} /> Restaurar</button>
               </div>
             ))}
           </div>
-        </Disclosure>
+        </Disclosure></div>
       )}
-      <p className="small faint" style={{ marginTop: 10 }}>Están en <code>{data.dir}</code>. Para protegerte de una avería del disco, copia esa carpeta a otro sitio de vez en cuando.</p>
       {restoring && (
         <Dialog title="Restaurar esta cuenta" onClose={() => { if (!busy) setRestoring(null); }}>
-          <p>Esta cuenta volverá a como estaba el {when(restoring.at)}. Lo que hayas cambiado después se perderá, pero antes se guarda una copia de cómo está ahora. Las demás cuentas no cambian.</p>
+          <p>Vuelve a como estaba el {when(restoring.at)}. Antes se guarda una copia de cómo está ahora.</p>
           {error && <p className="small loss" role="alert">{error}</p>}
           <div className="dialog-actions">
             <button className="btn quiet" disabled={busy} onClick={() => setRestoring(null)}>Cancelar</button>

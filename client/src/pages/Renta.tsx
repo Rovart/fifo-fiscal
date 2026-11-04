@@ -305,11 +305,8 @@ function YearEnd({ rep, year }: { rep: YearReport; year: number }) {
   );
 }
 
-const FORM_COPY: Record<ForeignForm, { title: string; what: string }> = {
-  '720': { title: 'Modelo 720', what: 'Acciones, ETF y fondos en brókers extranjeros' },
-  '721': { title: 'Modelo 721', what: 'Criptomonedas en exchanges extranjeros' },
-};
-const PLACE = (b: string) => BROKER_LABEL[b as Broker] ?? 'Fuera de los brókers';
+const FORM_NAME: Record<ForeignForm, string> = { '720': 'Valores', '721': 'Cripto' };
+const PLACE = (b: string) => BROKER_LABEL[b as Broker] ?? 'Cartera propia';
 
 function Foreign({ year }: { year: number }) {
   const { tick, changed, state: { settings } } = useApp();
@@ -323,30 +320,31 @@ function Foreign({ year }: { year: number }) {
     changed('Guardado');
   };
   return (
-    <div className="card foreign">
-      <h2 className="inline">Modelos 720 y 721 <Help text={HELP.extranjero} /></h2>
-      <p className="small muted">Cuenta el valor a 31 de diciembre, no lo que te costó. Solo los presentan los residentes fiscales en España, del 1 de enero al 31 de marzo de {year + 1}.</p>
-      {data.estimated && <p className="small muted">El año no ha terminado: es una estimación con los precios de hoy.</p>}
-      {shown.map((f) => <ForeignRow key={f.form} f={f} year={year} estimated={data.estimated} filings={filings} save={save} />)}
+    <div className="card flush foreign">
+      <div className="card-title">
+        <h2 className="inline">Modelos 720 y 721 <Help text={HELP.extranjero} /></h2>
+        <span className="small muted">{data.estimated ? 'Estimado, precios de hoy' : `Plazo: 31 mar ${year + 1}`}</span>
+      </div>
+      <div className="list">
+        {shown.map((f) => <ForeignRow key={f.form} f={f} year={year} estimated={data.estimated} filings={filings} save={save} />)}
+      </div>
     </div>
   );
 }
 
 function ForeignRow({ f, year, estimated, filings, save }: { f: ForeignFormReport; year: number; estimated: boolean; filings: ForeignFiling[]; save: (list: ForeignFiling[]) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const copy = FORM_COPY[f.form];
-  const unpriced = f.holdings.filter((h) => h.priced === 'cost');
   const status = f.filed ? <span className="tag gain">Presentado</span>
-    : f.required ? <span className="tag warn">{estimated ? 'Si sigue así, toca' : 'Obligatorio'}</span>
-      : <span className="tag">{estimated ? 'De momento, no' : 'No hace falta'}</span>;
-  const reasons = [
-    f.reasons.includes('over50k') && 'Pasa de 50.000 € y no consta que lo hayas presentado antes.',
-    f.reasons.includes('increase') && f.lastFiled && `Ha subido ${eur(f.increaseEur)} desde el de ${f.lastFiled.year}: más de 20.000 €.`,
-    f.reasons.includes('closures') && `Has cerrado ${f.closures.length === 1 ? 'una posición que declaraste' : `${f.closures.length} posiciones que declaraste`}: también se informa.`,
-    !f.required && f.lastFiled && `Desde el de ${f.lastFiled.year} ha cambiado ${signed(f.increaseEur)} y no has cerrado nada declarado.`,
-    !f.required && !f.lastFiled && 'No llega a 50.000 €.',
-  ].filter(Boolean).join(' ');
+    : f.required ? <span className="tag warn">Obligatorio</span>
+      : <span className="tag">No hace falta</span>;
+  const reason = [
+    f.reasons.includes('over50k') && 'Más de 50.000 €',
+    f.lastFiled && (f.reasons.includes('increase') || !f.required) && `${signed(f.increaseEur)} desde ${f.lastFiled.year}`,
+    f.reasons.includes('closures') && `${f.closures.length} ${f.closures.length === 1 ? 'cerrada' : 'cerradas'}`,
+    !f.required && !f.lastFiled && 'Menos de 50.000 €',
+  ].filter(Boolean).join(' · ');
   const record = async (value: string | null) => {
     const rest = filings.filter((x) => !(x.form === f.form && x.year === year));
     try {
@@ -356,69 +354,64 @@ function ForeignRow({ f, year, estimated, filings, save }: { f: ForeignFormRepor
     } catch (e) { setError((e as Error).message); }
   };
   return (
-    <div className="foreign-form">
-      <div className="foreign-head">
+    <div>
+      <button className="item tap" aria-expanded={open} onClick={() => setOpen(!open)}>
         <div className="main-col">
-          <div className="title">{copy.title} {status}</div>
-          <div className="sub">{copy.what}</div>
+          <div className="title">{f.form} · {FORM_NAME[f.form]}</div>
+          <div className="sub">{reason}</div>
         </div>
         <div className="end">
           <div className="amount">{eur(f.valueEur)}</div>
-          <div className="sub">costó {eur(f.costEur)}</div>
+          {status}
         </div>
-      </div>
-      <p className="small">{reasons}</p>
-      {unpriced.length > 0 && <p className="small muted">Sin precio a 31 de diciembre para {unpriced.map((h) => niceName(h.assetName)).join(', ')}: se cuenta lo que costó.</p>}
-      {D(f.outside.valueEur).gt(0) && (
-        <Callout tone="info">
-          Además tenías {eur(f.outside.valueEur)} en criptomonedas fuera de los brókers. Si estaban en una cartera tuya, no se declaran; si estaban en otro exchange extranjero, súmalas.
-        </Callout>
-      )}
-      {(f.holdings.length > 0 || f.closures.length > 0 || f.outside.holdings.length > 0) && (
-        <Disclosure flush title={`Detalle · ${[...f.holdings, ...f.outside.holdings].length} posiciones${f.closures.length ? ` · ${f.closures.length} cerradas` : ''}`}>
-          <table className="mini-table">
-            <thead><tr><th>Activo</th><th className="wide-only">Dónde</th><th className="r">Cantidad</th><th className="r">Valor</th></tr></thead>
-            <tbody>
-              {[...f.holdings, ...f.outside.holdings].map((h) => (
-                <tr key={`${h.broker}|${h.assetId}`}>
-                  <td>{niceName(h.assetName)}{isinOf(h.assetId) && <span className="faint small"> · {h.assetId}</span>}<div className="faint small narrow-only">{PLACE(h.broker)}</div></td>
-                  <td className="wide-only">{PLACE(h.broker)}</td>
-                  <td className="r">{qty(h.quantity)}</td>
-                  <td className="r">{eur(h.valueEur)}{h.priced === 'cost' && <div className="faint small">coste</div>}</td>
-                </tr>
-              ))}
-              {f.closures.map((c) => (
-                <tr key={`cerrada|${c.broker}|${c.assetId}`}>
-                  <td>{niceName(c.assetName)} <span className="tag">Cerrada en {year}</span></td>
-                  <td className="wide-only">{PLACE(c.broker)}</td>
-                  <td className="r">{qty(c.quantity)}</td>
-                  <td className="r">—</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Disclosure>
-      )}
-      {!estimated && (
-        <div className="foreign-filed">
-          {f.filed && editing === null && (
-            <>
-              <span className="small muted">Anotado como presentado por {eur(f.filed.valueEur)}.</span>
-              <button className="btn small" onClick={() => setEditing(f.filed!.valueEur)}>Cambiar</button>
-              <button className="btn small" onClick={() => void record(null)}>Quitar</button>
-            </>
+        <ChevronRight size={16} className={`chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && (
+        <div className="expand">
+          {(f.holdings.length > 0 || f.closures.length > 0) && (
+            <table className="mini-table">
+              <thead><tr><th>Activo</th><th className="wide-only">Bróker</th><th className="r wide-only">Cantidad</th><th className="r">Valor</th></tr></thead>
+              <tbody>
+                {f.holdings.map((h) => (
+                  <tr key={`${h.broker}|${h.assetId}`}>
+                    <td>{niceName(h.assetName)}{isinOf(h.assetId) && <div className="small faint">{h.assetId}</div>}<div className="small faint narrow-only">{PLACE(h.broker)} · {qty(h.quantity)}</div></td>
+                    <td className="wide-only nowrap">{PLACE(h.broker)}</td>
+                    <td className="r wide-only">{qty(h.quantity)}</td>
+                    <td className="r">{eur(h.valueEur)}{h.priced === 'cost' && <div className="small faint">sin precio</div>}</td>
+                  </tr>
+                ))}
+                {f.closures.map((c) => (
+                  <tr key={`cerrada|${c.broker}|${c.assetId}`} className="faint">
+                    <td>{niceName(c.assetName)}<div className="small">Cerrada en {year}<span className="narrow-only"> · {PLACE(c.broker)}</span></div></td>
+                    <td className="wide-only">{PLACE(c.broker)}</td>
+                    <td className="r wide-only">{qty(c.quantity)}</td>
+                    <td className="r">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
-          {!f.filed && editing === null && (
-            <button className="btn small" onClick={() => setEditing(f.valueEur)}>Lo presenté</button>
+          {D(f.outside.valueEur).gt(0) && <p className="small muted">En carteras propias: {eur(f.outside.valueEur)}. No se declara.</p>}
+          {!estimated && (
+            <div className="foreign-filed">
+              {f.filed && editing === null && (
+                <>
+                  <span className="small muted">Declarado: {eur(f.filed.valueEur)}</span>
+                  <button className="btn small quiet" onClick={() => setEditing(f.filed!.valueEur)}>Cambiar</button>
+                  <button className="btn small quiet" onClick={() => void record(null)}>Quitar</button>
+                </>
+              )}
+              {!f.filed && editing === null && <button className="btn small" onClick={() => setEditing(f.valueEur)}>Lo presenté</button>}
+              {editing !== null && (
+                <>
+                  <NumField label="Valor declarado" value={editing} onChange={setEditing} />
+                  <button className="btn small primary" disabled={!editing || D(editing).lt(0)} onClick={() => void record(editing)}>Guardar</button>
+                  <button className="btn small quiet" onClick={() => setEditing(null)}>Cancelar</button>
+                </>
+              )}
+              {error && <span className="small loss">{error}</span>}
+            </div>
           )}
-          {editing !== null && (
-            <>
-              <NumField label="Valor que declaraste" value={editing} onChange={setEditing} />
-              <button className="btn small primary" disabled={!editing || D(editing).lt(0)} onClick={() => void record(editing)}>Guardar</button>
-              <button className="btn small" onClick={() => setEditing(null)}>Cancelar</button>
-            </>
-          )}
-          {error && <span className="small loss">{error}</span>}
         </div>
       )}
     </div>

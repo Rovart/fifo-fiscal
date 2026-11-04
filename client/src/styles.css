@@ -346,7 +346,9 @@ select.input { appearance: none; padding-right: 32px; background-image: url("dat
 .mini-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .mini-table th { text-align: left; color: var(--ink-3); font-weight: 500; font-size: 13px; padding: 4px 0; }
 .mini-table td { padding: 6px 0; border-top: 1px solid var(--hairline); vertical-align: top; }
-.mini-table .r { text-align: right; font-variant-numeric: tabular-nums; padding-left: 12px; white-space: nowrap; }
+.mini-table .r { text-align: right; font-variant-numeric: tabular-nums; padding-left: 16px; white-space: nowrap; }
+/* Sin hueco, una cifra alineada a la derecha se pega al texto de la columna siguiente. */
+.mini-table :is(th, td) + :is(th, td) { padding-left: 16px; }
 
 /* Barras de resultado por activo */
 .bars { padding: 2px 10px 12px; }
@@ -554,7 +556,6 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
   .item.act { flex-wrap: wrap; }
   .item.act .main-col { flex: 1 1 calc(100% - 48px); }
   .mini-table .wide-only { display: none; }
-  .mini-table .narrow-only { display: block; }
   .item.act > .btn { margin-left: 48px; }
   .next .body { flex: 1 1 calc(100% - 52px); }
   .card { padding: 16px; }
@@ -582,17 +583,15 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
   [hidden] { display: flex !important; }
 }
 .dividends-scope { overflow-x: auto; max-width: 100%; }
-.mini-table .narrow-only { display: none; }
-.foreign-form { border-top: 1px solid var(--hairline); padding: 14px 0 4px; margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.foreign-head { display: flex; gap: 12px; align-items: flex-start; }
-.foreign-head .main-col { flex: 1; min-width: 0; }
-.foreign-head .title { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.foreign-head .end { text-align: right; flex-shrink: 0; }
-.foreign-head .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
-.foreign-filed { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+@media (min-width: 821px) { .mini-table .narrow-only { display: none; } }
+.foreign-filed { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
 .foreign-filed .field { max-width: 200px; }
 .dossier { display: flex; flex-direction: column; gap: 16px; }
-.dossier h1 { font-size: 24px; margin: 4px 0 6px; }
+.dossier h1 { font-size: 24px; margin: 0 0 2px; }
+.dossier h3 { font-size: 14px; margin: 18px 0 4px; }
+.dossier .card > p.small { margin: 10px 0 0; }
+.dossier-totals { margin-top: 14px; }
+.dossier-totals tr.strong td { font-weight: 650; }
 .dossier-warn { border-left: 3px solid var(--warn); }
 .dossier-warn ul, .dossier-notes { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .dossier-boxes td:nth-child(2) { width: 70px; font-variant-numeric: tabular-nums; }
@@ -607,10 +606,10 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
 .dossier-sales tr.sale td { font-weight: 550; border-top: 1px solid var(--hairline); }
 .dossier-sales tr.lot td { color: var(--ink-2); font-size: 12.5px; padding-top: 2px; padding-bottom: 2px; }
 .dossier-sales tr.lot td:first-child { padding-left: 16px; }
+.dossier-sales td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dossier .tag { margin-left: 6px; }
 .dossier tfoot td { font-weight: 600; border-top: 1px solid var(--line); }
-.dossier .mini-table .gap { padding-left: 24px; }
-@media screen and (max-width: 760px) { .dossier-asset { padding: 4px 16px 12px; } .dossier-asset-head { flex-direction: column; } .dossier-asset-head .end { text-align: left; } }
+@media screen and (max-width: 820px) { .dossier-asset { padding: 4px 16px 12px; } .dossier-asset-head { flex-direction: column; } .dossier-asset-head .end { text-align: left; } }
 @media print {
   .dossier { gap: 10px; font-size: 11px; }
   .dossier .card { padding: 12px; break-inside: auto; }
@@ -620,10 +619,14 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
   .dossier-sales tr { break-inside: avoid; }
   .dossier-scroll { overflow: visible; }
   .page:has(.dossier) .page-head { display: none !important; }
+  /* Cada bloque de ventas en página nueva: su título nunca queda solo al pie. */
+  .dossier-section { break-before: page; }
+  /* El navegador repite el pie en cada página: el total saldría a mitad de la tabla. */
+  .dossier tfoot { display: table-row-group; }
 }
 .card-foot { padding: 12px 22px 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--hairline); }
 .card-foot p { flex: 1 1 260px; margin: 0; }
-@media (max-width: 760px) { .card-foot { padding: 12px 16px 14px; } }
+@media (max-width: 820px) { .card-foot { padding: 12px 16px 14px; } }
 /* En papel siempre en claro: con el tema oscuro, el texto claro no se vería sobre blanco. */
 @media print {
   :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
@@ -638,3 +641,11 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
   }
   body { color: var(--ink); }
 }
+.fresh-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.fresh { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 14px; background: var(--surface-2); font-size: 13px; font-weight: 550; }
+.fresh .d { font-weight: 400; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.fresh.stale { background: var(--warn-soft); color: var(--warn); }
+.fresh.stale .d { color: var(--warn); }
+.foreign .expand { padding: 4px 22px 16px; }
+@media (max-width: 820px) { .foreign .expand { padding: 4px 16px 14px; } }
+.mini-table .nowrap { white-space: nowrap; }

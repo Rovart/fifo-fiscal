@@ -417,7 +417,7 @@ describe('Dossier para el gestor', () => {
     expect(d.assets[0].sales[0]).toMatchObject({ date: '2025-03-01', proceedsEur: '4500.00', costEur: '2000.00', gainEur: '2500.00' });
     expect(d.assets[0].sales[0].lots.map((l: { date: string; quantity: string; flag: string | null }) => [l.date, l.quantity, l.flag])).toEqual([['2024-01-10', '1', null], ['2024-02-10', '0.5', null]]);
     expect(d.assets[0].sales[1].lots.map((l: { flag: string | null }) => l.flag)).toEqual([null, 'falta']);
-    expect(d.notes.map((n: { text: string }) => n.text)).toContain('Una venta tiene una parte sin compra que la respalde: esa parte va con coste 0.');
+    expect(d.notes.map((n: { text: string }) => n.text)).toContain('1 venta con una parte sin compra (coste 0).');
     expect(d.foreign.forms).toHaveLength(2);
   });
 

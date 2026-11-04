@@ -77,30 +77,32 @@ export function dossier(year: number): Dossier {
 
   const name = (id: string) => (id === 'CRYPTO:*' ? 'Todas las criptomonedas' : id === '*' ? 'Todo' : res.positions.find((p) => p.assetId === id)?.assetName ?? byAsset.get(id)?.assetName ?? id);
   const notes: DossierNote[] = [];
+  const dmy = (d: string) => d.split('-').reverse().join('/');
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const cover = settings.shortfallCover;
   if (cover && cover.from.slice(0, 4) <= String(year) && cover.to.slice(0, 4) >= String(year)) {
-    notes.push({ date: null, text: `Las ventas de criptomonedas sin compra previa entre el ${cover.from} y el ${cover.to} toman el coste de las compras siguientes, como el informe de CoinTracking con el que se declaró ese periodo.` });
+    notes.push({ date: null, text: `Cripto vendida sin compra previa (${dmy(cover.from)} a ${dmy(cover.to)}): coste de las compras siguientes, como en CoinTracking.` });
   }
   for (const [id, start] of Object.entries(settings.fifoStartDates ?? {})) {
-    if (start.slice(0, 4) <= String(year)) notes.push({ date: start, text: `${name(id)}: el FIFO empieza aquí; lo anterior se declaró en su momento y no se arrastra.` });
+    if (start.slice(0, 4) <= String(year)) notes.push({ date: start, text: `${name(id)}: FIFO desde esta fecha.` });
   }
   for (const [id, c] of Object.entries(settings.fifoConfirmedClosures ?? {})) {
     const end = new Date(Date.UTC(Number(c.month.slice(0, 4)), Number(c.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
-    if (c.month.slice(0, 4) === String(year)) notes.push({ date: end, text: `${name(id)}: saldo cero confirmado a fin de mes. ${c.note}` });
+    if (c.month.slice(0, 4) === String(year)) notes.push({ date: end, text: `${name(id)}: saldo cero confirmado. ${c.note}` });
   }
   const resets = (res.inventoryResets ?? []).filter((r) => r.date.slice(0, 4) === String(year) && D(r.quantityBefore).gt(0));
   for (const r of resets.filter((x) => D(x.costEurBefore).gte(1))) {
-    notes.push({ date: r.date, text: `${name(r.assetId)}: se da por cerrado un resto de ${D(r.quantityBefore).toFixed()} con coste ${cents(D(r.costEurBefore))} €, sin efecto fiscal. ${r.note}`.trim() });
+    notes.push({ date: r.date, text: `${name(r.assetId)}: resto de ${D(r.quantityBefore).toFixed()} cerrado (coste ${cents(D(r.costEurBefore))} €), sin efecto fiscal.` });
   }
   const dust = resets.filter((x) => D(x.costEurBefore).lt(1)).length;
-  if (dust) notes.push({ date: null, text: `${dust === 1 ? 'Un resto mínimo' : `${dust} restos mínimos`}, de menos de 1 € de coste, se ${dust === 1 ? 'da' : 'dan'} por ${dust === 1 ? 'cerrado' : 'cerrados'} tras su último movimiento.` });
+  if (dust) notes.push({ date: null, text: `${count(dust, 'resto', 'restos')} de menos de 1 € ${dust === 1 ? 'cerrado' : 'cerrados'}.` });
   const lots = assets.flatMap((a) => a.sales.flatMap((s) => s.lots));
   const free = lots.filter((l) => l.flag === 'coste0').length;
-  if (free) notes.push({ date: null, text: `${free === 1 ? 'Una compra se toma' : `${free} compras se toman`} con coste 0: regalos, airdrops o datos antiguos de CoinTracking sin precio.` });
+  if (free) notes.push({ date: null, text: `${count(free, 'compra', 'compras')} con coste 0 (regalos, airdrops o datos antiguos).` });
   const missing = lots.filter((l) => l.flag === 'falta').length;
-  if (missing) notes.push({ date: null, text: `${missing === 1 ? 'Una venta tiene' : `${missing} ventas tienen`} una parte sin compra que la respalde: esa parte va con coste 0.` });
+  if (missing) notes.push({ date: null, text: `${count(missing, 'venta', 'ventas')} con una parte sin compra (coste 0).` });
   const edited = [...new Set(assets.flatMap((a) => a.sales.filter((s) => s.edited || s.lots.some((l) => l.edited)).map(() => a.assetId)))].length;
-  if (edited) notes.push({ date: null, text: `Hay operaciones corregidas a mano en ${edited === 1 ? 'un activo' : `${edited} activos`}; van marcadas en el detalle.` });
+  if (edited) notes.push({ date: null, text: `Corregido a mano en ${count(edited, 'activo', 'activos')} (marcado en las ventas).` });
   notes.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 
   const profile = listProfiles().find((p) => p.id === currentProfileId())?.name ?? '';
