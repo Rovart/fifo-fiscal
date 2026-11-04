@@ -1,14 +1,87 @@
-import { Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { CLASS_LABEL, type Asset, type AssetClass, type Market, type Settings as SettingsT } from '../../../shared/types.ts';
+import { CLASS_LABEL, type Asset, type AssetClass, type Backup, type Market, type Settings as SettingsT } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
-import { Disclosure, Help, NumField, PageHead, Segmented } from '../components/ui.tsx';
+import { Dialog, Disclosure, Help, NumField, PageHead, Segmented } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
+import { useApi } from '../hooks.ts';
 import { dateShort, isinOf, niceName } from '../format.ts';
 import { HELP } from '../glossary.ts';
 import { applyTheme, loadTheme, type Theme } from '../theme.ts';
 
 const MARKET_LABEL: Record<Market, string> = { eu: 'Europa', us: 'EE. UU.', other: 'Otro' };
+
+const BACKUP_KIND: Record<Backup['kind'], string> = { daily: 'Diaria', manual: 'Hecha por ti', 'antes-de-restaurar': 'Antes de restaurar' };
+const size = (bytes: number) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`);
+const when = (at: string) => `${dateShort(at.slice(0, 10))}, ${at.slice(11, 16)}`;
+
+function Backups() {
+  const { tick, changed, state: { profileId } } = useApp();
+  const [version, setVersion] = useState(0);
+  const { data } = useApi<{ dir: string | null; items: Backup[] }>('/backups', `${tick}-${version}`);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [restoring, setRestoring] = useState<Backup | null>(null);
+  if (!data) return null;
+  if (!data.dir) return null;
+  const run = async (action: () => Promise<unknown>, message: string, reload = false) => {
+    setBusy(true); setError('');
+    try {
+      await action();
+      // Tras restaurar, esta página aún tiene los ajustes de antes y volvería a guardarlos.
+      if (reload) { window.location.reload(); return; }
+      setRestoring(null);
+      setVersion((v) => v + 1);
+      changed(message);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const last = data.items[0];
+  const mine = data.items.filter((b) => b.profiles.includes(profileId));
+  return (
+    <div className="card">
+      <div className="row-between">
+        <div>
+          <h2>Copias de seguridad</h2>
+          <div className="small muted" style={{ marginTop: 2 }}>
+            {last ? `La última es del ${when(last.at)}.` : 'Aún no hay ninguna.'} Cada día que abres la aplicación se guardan todas las cuentas: las de la última semana y una por mes del último año.
+          </div>
+        </div>
+        <button className="btn" disabled={busy} onClick={() => void run(() => api('/backups', { method: 'POST' }), 'Copia hecha')}><Save size={15} /> {busy && !restoring ? 'Guardando…' : 'Hacer una ahora'}</button>
+      </div>
+      {error && !restoring && <p className="small loss" role="alert">{error}</p>}
+      {mine.length > 0 && (
+        <Disclosure title={`Restaurar esta cuenta (${mine.length})`} flush>
+          <div className="list">
+            {mine.map((b) => (
+              <div className="item" key={b.id}>
+                <div className="main-col">
+                  <div className="title">{when(b.at)}</div>
+                  <div className="sub">{BACKUP_KIND[b.kind]} · {size(b.bytes)}</div>
+                </div>
+                <button className="btn small" disabled={busy} onClick={() => { setError(''); setRestoring(b); }}><ArchiveRestore size={14} /> Restaurar</button>
+              </div>
+            ))}
+          </div>
+        </Disclosure>
+      )}
+      <p className="small faint" style={{ marginTop: 10 }}>Están en <code>{data.dir}</code>. Para protegerte de una avería del disco, copia esa carpeta a otro sitio de vez en cuando.</p>
+      {restoring && (
+        <Dialog title="Restaurar esta cuenta" onClose={() => { if (!busy) setRestoring(null); }}>
+          <p>Esta cuenta volverá a como estaba el {when(restoring.at)}. Lo que hayas cambiado después se perderá, pero antes se guarda una copia de cómo está ahora. Las demás cuentas no cambian.</p>
+          {error && <p className="small loss" role="alert">{error}</p>}
+          <div className="dialog-actions">
+            <button className="btn quiet" disabled={busy} onClick={() => setRestoring(null)}>Cancelar</button>
+            <button className="btn primary" disabled={busy} onClick={() => void run(() => api(`/backups/${encodeURIComponent(restoring.id)}/restore`, { method: 'POST' }), 'Cuenta restaurada', true)}>{busy ? 'Restaurando…' : 'Restaurar'}</button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
 
 function FifoStart() {
   const { changed } = useApp();
@@ -66,7 +139,7 @@ export function Settings() {
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     const t = setTimeout(() => {
-      const { fifoAutoStart: _auto, fifoStartDates: _dates, fifoConfirmedClosures: _closures, ...criteria } = s;
+      const { fifoAutoStart: _auto, fifoStartDates: _dates, fifoConfirmedClosures: _closures, foreignFilings: _filings, ...criteria } = s;
       void api('/settings', { method: 'PUT', body: criteria }).then(() => { setSaveError(''); changed('Guardado'); }).catch((e: Error) => setSaveError(e.message));
     }, 500);
     return () => clearTimeout(t);
@@ -175,6 +248,8 @@ export function Settings() {
       </Disclosure>
 
       <FifoStart />
+
+      <Backups />
 
       <Disclosure card title="Criterios fiscales (avanzado)">
         <div className="stack">

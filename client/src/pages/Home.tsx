@@ -1,11 +1,12 @@
-import { AlertCircle, ArrowRight, CheckCircle2, CircleDashed, ShieldCheck, Upload as UploadIcon } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, CircleDashed, FileClock, ShieldCheck, Upload as UploadIcon } from 'lucide-react';
 import type { FormSection, YearReport } from '../../../server/engine/report.ts';
 import { D, Decimal } from '../../../shared/decimal.ts';
+import { BROKER_LABEL, CLASS_LABEL, type AssetClass, type BrokerFreshness, type YearEndReview } from '../../../shared/types.ts';
 import { Callout, Help, Loading, YearPicker } from '../components/ui.tsx';
 import { DivergingBars } from '../components/charts.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
-import { eur, niceName, signClass, signed } from '../format.ts';
+import { dateShort, eur, niceName, signClass, signed } from '../format.ts';
 import { useApi } from '../hooks.ts';
 
 function Welcome() {
@@ -74,6 +75,91 @@ function NextStep() {
   );
 }
 
+const daysAgo = (date: string, today: string) => Math.round((Date.parse(today) - Date.parse(date)) / 86400000);
+
+/** Hasta cuándo llegan los datos de cada bróker en el año en curso. */
+function Freshness({ items }: { items: BrokerFreshness[] }) {
+  const { state, go } = useApp();
+  return (
+    <div className="card flush">
+      <div className="card-title row-between">
+        <h2>Tus extractos</h2>
+        <button className="btn small" onClick={() => go('upload')}><UploadIcon size={14} /> Subir</button>
+      </div>
+      <div className="list">
+        {items.map((i) => (
+          <div className="item" key={i.broker}>
+            <div className="main-col">
+              <div className="title">{BROKER_LABEL[i.broker]}</div>
+              <div className="sub">Último movimiento: {dateShort(i.lastOpAt.slice(0, 10))}</div>
+            </div>
+            <div className="end">
+              {i.stale ? <span className="tag warn">Hace {daysAgo(i.upTo, state.today)} días</span> : <div className="small muted">Al día hasta el {dateShort(i.upTo)}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StaleWarning({ items }: { items: BrokerFreshness[] }) {
+  const { go, year } = useApp();
+  const stale = items.filter((i) => i.stale);
+  if (stale.length === 0) return null;
+  const names = stale.map((i) => BROKER_LABEL[i.broker]);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} y ${names.at(-1)}`;
+  return (
+    <Callout tone="warn" icon={FileClock} title={`${list}: datos de hace más de un mes`} action={<button className="btn small" onClick={() => go('upload')}>Subir</button>}>
+      Sube {stale.length === 1 ? 'un extracto nuevo' : 'extractos nuevos'} para que {year} esté completo.
+    </Callout>
+  );
+}
+
+const TOP_LOSSES = 5;
+
+/** Del 1 de octubre al 31 de diciembre: pérdidas sin realizar que compensarían lo ganado este año. */
+function YearEndCard() {
+  const { tick, go, state } = useApp();
+  const { data } = useApi<YearEndReview>('/year-end', `${tick}`);
+  if (!data || D(data.gppBalanceEur).lte(0) || data.losses.length === 0) return null;
+  const left = daysAgo(state.today, `${data.year}-12-31`);
+  const shown = data.losses.slice(0, TOP_LOSSES);
+  return (
+    <div className="card flush">
+      <div className="card-title" style={{ display: 'block' }}>
+        <h2>Antes del 31 de diciembre</h2>
+        <div className="small muted" style={{ marginTop: 2 }}>{left === 0 ? 'Hoy es el último día' : `Quedan ${left} días`} para que una venta cuente en la Renta de {data.year}.</div>
+      </div>
+      <div className="stats">
+        <div className="stat"><div className="l">Ganado con ventas</div><div className="v gain">{signed(data.gppBalanceEur)}</div></div>
+        <div className="stat"><div className="l">Pérdidas sin vender</div><div className="v loss">{eur(D(data.latentLossEur).abs().toFixed(2))}</div></div>
+        {D(data.savingEur).gt(0) && <div className="stat"><div className="l inline">Ahorro posible en la cuota <Help text={HELP.cierre} /></div><div className="v">{eur(data.savingEur)}</div></div>}
+      </div>
+      <div className="list">
+        {shown.map((l) => (
+          <div className="item" key={l.assetId}>
+            <div className="main-col">
+              <div className="title">{niceName(l.assetName)}</div>
+              <div className="sub">{CLASS_LABEL[l.class as AssetClass] ?? l.class} · vale {eur(l.valueEur)}, costó {eur(l.costEur)}</div>
+            </div>
+            <div className="end">
+              <div className="amount loss">{signed(l.latentEur)}</div>
+              {l.recentBuy && <span className="tag warn">Se aplazaría</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="card-foot">
+        <p className="small muted">
+          {data.losses.length > TOP_LOSSES ? `Y ${data.losses.length - TOP_LOSSES} más. ` : ''}En acciones, ETF y fondos, si compras el mismo valor en los dos meses antes o después de vender, la pérdida se aplaza; en criptomonedas no. Precios del {dateShort(data.quotesAt?.slice(0, 10))}.
+        </p>
+        <button className="btn small" onClick={() => go('whatif')}>Simularlo <ArrowRight size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
 const MAX_BARS = 7;
 
 /** Resultado de ventas por activo, con el cero como referencia. El total coincide con «Ventas». */
@@ -108,6 +194,9 @@ function WhereBars({ sections }: { sections: FormSection[] }) {
 export function Home() {
   const { state, year, tick, go } = useApp();
   const { data: rep } = useApi<YearReport>(state.counts.operations ? `/report/${year}` : null, `${tick}`);
+  const current = year === Number(state.today.slice(0, 4));
+  const { data: fresh } = useApi<{ items: BrokerFreshness[] }>(state.counts.operations && current ? '/freshness' : null, `${tick}`);
+  const closing = current && state.today.slice(5, 7) >= '10';
   if (state.counts.operations === 0) return <Welcome />;
   if (!rep) return <Loading />;
   const sales = rep.savings.gppBalance;
@@ -149,7 +238,9 @@ export function Home() {
         </div>
       </div>
       <NextStep />
+      {current && fresh && <StaleWarning items={fresh.items} />}
       {nothing && <Callout tone="info">No hay ventas ni rentas en {year}.</Callout>}
+      {closing && <YearEndCard />}
       <WhereBars sections={rep.sections} />
       {D(rep.deferred.pendingEnd).gt(0) && (
         <Callout tone="info" title={<span className="inline">{eur(rep.deferred.pendingEnd)} de pérdidas aplazadas <Help text={HELP.aplazada} /></span>}>
@@ -161,6 +252,7 @@ export function Home() {
           {rep.savings.carryForward.map((c) => `${eur(c.amount)} de ${c.year}, hasta ${c.expires}`).join(' · ')}
         </Callout>
       )}
+      {current && fresh && fresh.items.length > 0 && <Freshness items={fresh.items} />}
     </>
   );
 }

@@ -25,7 +25,7 @@ export const db = new Proxy(mainDb, {
   },
 });
 
-function initialize(database: DatabaseSync) {
+export function initialize(database: DatabaseSync) {
 database.exec(`
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);

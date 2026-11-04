@@ -6,6 +6,7 @@ import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
 import { Dividends } from './pages/Dividends.tsx';
+import { Dossier } from './pages/Dossier.tsx';
 import { Home } from './pages/Home.tsx';
 import { Movements } from './pages/Movements.tsx';
 import { Portfolio } from './pages/Portfolio.tsx';
@@ -17,7 +18,7 @@ import { Upload } from './pages/Upload.tsx';
 import { Performance } from './pages/Performance.tsx';
 import { WhatIf } from './pages/WhatIf.tsx';
 
-const PAGES: Page[] = ['home', 'upload', 'review', 'renta', 'movements', 'portfolio', 'results', 'dividends', 'performance', 'whatif', 'settings'];
+const PAGES: Page[] = ['home', 'upload', 'review', 'renta', 'movements', 'portfolio', 'results', 'dividends', 'performance', 'whatif', 'settings', 'dossier'];
 const fromHash = (): Page => {
   const h = location.hash.slice(1) as Page;
   return PAGES.includes(h) ? h : 'home';
@@ -137,6 +138,7 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
             {page === 'performance' && <Performance />}
             {page === 'whatif' && <WhatIf />}
             {page === 'settings' && <Settings />}
+            {page === 'dossier' && <Dossier />}
           </div>
         </main>
         {editor && (

@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { Operation } from '../../shared/types.ts';
 import type { AppState } from './api.ts';
 
-export type Page = 'home' | 'upload' | 'review' | 'renta' | 'movements' | 'portfolio' | 'results' | 'dividends' | 'performance' | 'whatif' | 'settings';
+export type Page = 'home' | 'upload' | 'review' | 'renta' | 'movements' | 'portfolio' | 'results' | 'dividends' | 'performance' | 'whatif' | 'settings' | 'dossier';
 
 export interface AppCtx {
   state: AppState;

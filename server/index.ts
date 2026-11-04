@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app } from './app.ts';
+import { startBackups } from './backup.ts';
 import { DB_PATH, listProfiles, seedRatesIfEmpty, withProfile } from './db.ts';
 import { enableAutoResolution, scheduleResolution } from './resolution.ts';
 
@@ -12,6 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 seedRatesIfEmpty();
 enableAutoResolution();
 for (const profile of listProfiles()) withProfile(profile.id, () => scheduleResolution());
+startBackups();
 
 const devMode = process.argv.includes('--dev');
 const dist = join(here, '..', 'dist');

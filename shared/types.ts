@@ -1,5 +1,7 @@
 export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'cointracking' | 'manual';
 export interface Profile { id: string; name: string }
+/** Copia de seguridad de todas las cuentas. */
+export interface Backup { id: string; at: string; kind: 'daily' | 'manual' | 'antes-de-restaurar'; bytes: number; profiles: string[] }
 export type AssetClass = 'stock' | 'etf' | 'fund' | 'crypto' | 'bond' | 'other';
 export type Market = 'eu' | 'us' | 'other';
 
@@ -118,7 +120,41 @@ export interface Settings {
   openingLosses: { year: number; bucket: 'gpp' | 'rcm'; amount: string }[];
   /** Última Renta presentada: hasta ahí, lo pendiente es lo que dice esa Renta y no se recalcula. */
   lastFiledYear?: number | null;
+  /** Modelos 720 y 721 presentados, con el valor total declarado. */
+  foreignFilings?: ForeignFiling[];
 }
+
+/** 720: valores en el extranjero. 721: criptomonedas custodiadas en el extranjero. */
+export type ForeignForm = '720' | '721';
+export interface ForeignFiling { form: ForeignForm; year: number; valueEur: string }
+export interface ForeignHolding {
+  /** Bróker o «externo»: lo que salió a una cartera propia u otro sitio que la app no conoce. */
+  broker: string; assetId: string; assetName: string; quantity: string; costEur: string; valueEur: string;
+  /** close: cierre de diciembre. quote: cotización de hoy, el año no ha terminado. cost: sin precio, se usa el coste. */
+  priced: 'close' | 'quote' | 'cost';
+}
+export interface ForeignClosure { broker: string; assetId: string; assetName: string; quantity: string }
+export interface ForeignFormReport {
+  form: ForeignForm; valueEur: string; costEur: string; holdings: ForeignHolding[]; closures: ForeignClosure[];
+  /** Fuera de los brókers: si es una cartera tuya no se declara; si es otro exchange extranjero, sí. */
+  outside: { valueEur: string; holdings: ForeignHolding[] };
+  lastFiled: ForeignFiling | null; filed: ForeignFiling | null; increaseEur: string | null; required: boolean;
+  /** over50k: primera vez y supera 50.000 €. increase: sube más de 20.000 € desde el último. closures: cierras algo ya declarado. */
+  reasons: ('over50k' | 'increase' | 'closures')[];
+}
+export interface ForeignReport { year: number; estimated: boolean; forms: ForeignFormReport[] }
+
+/** Hasta cuándo llegan los datos de cada bróker. */
+export interface BrokerFreshness { broker: Broker; lastImportAt: string | null; lastOpAt: string; upTo: string; holds: boolean; stale: boolean }
+/** Posición con pérdida sin realizar al acercarse el fin de año. recentBuy: comprada en los últimos 2 meses, la pérdida se aplazaría. */
+export interface LatentLoss { assetId: string; assetName: string; class: string; quantity: string; costEur: string; valueEur: string; latentEur: string; recentBuy: boolean }
+export interface YearEndReview { year: number; gppBalanceEur: string; marginalRate: string; latentLossEur: string; offsetEur: string; savingEur: string; losses: LatentLoss[]; quotesAt: string | null }
+/** Compra que respalda parte de una venta. falta: sin compra. posterior: compra siguiente (regla de 2017). coste0: regalo o dato antiguo. */
+export interface DossierLot { date: string; broker: string | null; quantity: string; costEur: string; flag: 'falta' | 'posterior' | 'coste0' | null; edited: boolean }
+export interface DossierSale { date: string; broker: string; quantity: string; proceedsEur: string; costEur: string; gainEur: string; edited: boolean; lots: DossierLot[] }
+export interface DossierAsset { assetId: string; assetName: string; section: string; proceedsEur: string; costEur: string; gainEur: string; sales: DossierSale[] }
+export interface DossierIncome { assetId: string; assetName: string; type: Income['type']; broker: string; country: string; count: number; grossEur: string; foreignTaxEur: string; spanishTaxEur: string; netEur: string }
+export interface DossierNote { date: string | null; text: string }
 
 export const DEFAULT_SETTINGS: Settings = {
   toleranceEur: '0.02',

@@ -358,3 +358,101 @@ describe('Dividendos', () => {
     expect(items.map((i) => [i.year, i.type]).sort()).toEqual([[2024, 'dividend'], [2025, 'dividend']]);
   });
 });
+
+describe('Modelos 720 y 721', () => {
+  it('mide el valor a 31 de diciembre, la subida desde el último presentado y lo que se cierra', async () => {
+    const profile = db.createProfile('Extranjero');
+    const trade = (kind: 'buy' | 'sell', date: string, assetId: string, quantity: string, price: string) => {
+      const total = (Number(quantity) * Number(price)).toFixed(2);
+      svc.createOp({ kind, datetime: `${date}T12:00:00`, assetId, assetName: assetId, assetClass: 'crypto', quantity, unitPrice: price, currency: 'EUR', fxRate: '1', grossLocal: total, grossEur: total, totalEur: total, broker: 'kraken' });
+    };
+    db.withProfile(profile.id, () => {
+      trade('buy', '2023-03-01', 'BTC', '2', '30000');
+      trade('buy', '2023-03-01', 'ETH', '10', '2000');
+      trade('buy', '2023-03-01', 'SOL', '100', '10');
+      svc.createOp({ kind: 'transfer_out', datetime: '2023-04-01T12:00:00', assetId: 'SOL', assetName: 'SOL', assetClass: 'crypto', quantity: '100', broker: 'kraken' });
+      trade('sell', '2024-02-01', 'BTC', '1', '40000');
+      trade('sell', '2024-03-01', 'ETH', '10', '3000');
+      const price = db.db.prepare('INSERT INTO price_history (asset_id, month, price_eur) VALUES (?, ?, ?)');
+      price.run('BTC', '2023-12', '40000');
+      price.run('ETH', '2023-12', '2100');
+      price.run('BTC', '2024-12', '75000');
+    });
+    const crypto = async (year: number) => ((await (await request(`/api/foreign/${year}`, profile.id)).json()).forms as { form: string }[]).find((f) => f.form === '721') as Record<string, unknown>;
+
+    const first = await crypto(2023);
+    expect(first).toMatchObject({ valueEur: '101000.00', costEur: '80000.00', required: true, reasons: ['over50k'], lastFiled: null, closures: [] });
+    // Lo retirado a una cartera queda aparte y, sin cierre de diciembre, vale lo que costó.
+    expect(first.outside).toMatchObject({ valueEur: '1000.00', holdings: [{ assetId: 'SOL', broker: 'externo', priced: 'cost' }] });
+
+    expect((await request('/api/settings', profile.id, 'PUT', { foreignFilings: [{ form: '722', year: 2023, valueEur: '1' }] })).ok).toBe(false);
+    await request('/api/settings', profile.id, 'PUT', { foreignFilings: [{ form: '721', year: 2023, valueEur: '101000' }] });
+    expect(await crypto(2023)).toMatchObject({ filed: { year: 2023, valueEur: '101000' } });
+    expect(await crypto(2024)).toMatchObject({
+      valueEur: '75000.00', increaseEur: '-26000.00', required: true, reasons: ['closures'],
+      closures: [{ broker: 'kraken', assetId: 'ETH', quantity: '10' }],
+    });
+
+    await request('/api/settings', profile.id, 'PUT', { foreignFilings: [{ form: '721', year: 2023, valueEur: '50000' }] });
+    expect(await crypto(2024)).toMatchObject({ increaseEur: '25000.00', reasons: ['increase', 'closures'] });
+  });
+});
+
+describe('Dossier para el gestor', () => {
+  it('agrupa cada venta con las compras que consume y marca lo que no tiene compra', async () => {
+    const profile = db.createProfile('Dossier');
+    const trade = (kind: 'buy' | 'sell', date: string, quantity: string, price: string) => {
+      const total = (Number(quantity) * Number(price)).toFixed(2);
+      svc.createOp({ kind, datetime: `${date}T12:00:00`, assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', quantity, unitPrice: price, currency: 'EUR', fxRate: '1', grossLocal: total, grossEur: total, totalEur: total, broker: 'kraken' });
+    };
+    db.withProfile(profile.id, () => {
+      trade('buy', '2024-01-10', '1', '1000');
+      trade('buy', '2024-02-10', '1', '2000');
+      trade('sell', '2025-03-01', '1.5', '3000');
+      trade('sell', '2025-04-01', '1', '3000');
+    });
+    const d = await (await request('/api/dossier/2025', profile.id)).json();
+    expect(d.assets).toHaveLength(1);
+    expect(d.assets[0]).toMatchObject({ assetId: 'ETH', section: 'F2. Monedas virtuales', proceedsEur: '7500.00' });
+    expect(d.assets[0].sales[0]).toMatchObject({ date: '2025-03-01', proceedsEur: '4500.00', costEur: '2000.00', gainEur: '2500.00' });
+    expect(d.assets[0].sales[0].lots.map((l: { date: string; quantity: string; flag: string | null }) => [l.date, l.quantity, l.flag])).toEqual([['2024-01-10', '1', null], ['2024-02-10', '0.5', null]]);
+    expect(d.assets[0].sales[1].lots.map((l: { flag: string | null }) => l.flag)).toEqual([null, 'falta']);
+    expect(d.notes.map((n: { text: string }) => n.text)).toContain('Una venta tiene una parte sin compra que la respalde: esa parte va con coste 0.');
+    expect(d.foreign.forms).toHaveLength(2);
+  });
+});
+
+describe('Inicio: extractos y fin de año', () => {
+  const shift = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  const trade = (kind: 'buy' | 'sell', date: string, assetId: string, quantity: string, price: string, broker: 'degiro' | 'kraken' = 'degiro') => {
+    const total = (Number(quantity) * Number(price)).toFixed(2);
+    svc.createOp({ kind, datetime: `${date}T12:00:00`, assetId, assetName: assetId, assetClass: broker === 'kraken' ? 'crypto' : 'stock', quantity, unitPrice: price, currency: 'EUR', fxRate: '1', grossLocal: total, grossEur: total, totalEur: total, broker });
+  };
+
+  it('avisa de los brókers con datos de hace más de un mes en los que aún tienes algo', async () => {
+    const profile = db.createProfile('Extractos');
+    db.withProfile(profile.id, () => {
+      trade('buy', shift(-90), 'ETH', '1', '100', 'kraken');
+      trade('buy', shift(-3), 'AAA', '1', '100');
+    });
+    const items = (await (await request('/api/freshness', profile.id)).json()).items;
+    expect(items.map((i: { broker: string; stale: boolean; lastImportAt: string | null }) => [i.broker, i.stale, i.lastImportAt])).toEqual([['kraken', true, null], ['degiro', false, null]]);
+  });
+
+  it('cuenta las pérdidas sin vender que compensan lo ganado este año, salvo las que se aplazarían', async () => {
+    const profile = db.createProfile('Fin de año');
+    const today = shift(0);
+    db.withProfile(profile.id, () => {
+      trade('buy', shift(-200), 'GAIN', '10', '100');
+      trade('sell', today, 'GAIN', '10', '150');
+      trade('buy', shift(-200), 'OLD', '10', '100');
+      trade('buy', shift(-10), 'NEW', '10', '100');
+      const quote = db.db.prepare('INSERT INTO quotes (asset_id, symbol, currency, price, price_eur, at, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+      quote.run('OLD', 'OLD', 'EUR', '60', '60', today, `${today}T08:00:00Z`);
+      quote.run('NEW', 'NEW', 'EUR', '90', '90', today, `${today}T08:00:00Z`);
+    });
+    const review = await (await request('/api/year-end', profile.id)).json();
+    expect(review).toMatchObject({ gppBalanceEur: '500.00', latentLossEur: '-500.00', offsetEur: '400.00', marginalRate: '19', savingEur: '76.00' });
+    expect(review.losses.map((l: { assetId: string; latentEur: string; recentBuy: boolean }) => [l.assetId, l.latentEur, l.recentBuy])).toEqual([['OLD', '-400.00', false], ['NEW', '-100.00', true]]);
+  });
+});

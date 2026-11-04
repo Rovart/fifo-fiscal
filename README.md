@@ -36,6 +36,10 @@ La barra lateral sigue tres pasos:
    - CoinTracking: la lista de operaciones (Introducir monedas → Exportar → CSV), no el informe fiscal. Las filas de Kraken o Coinbase que ya cubren sus propios extractos se omiten, así que conviene añadir esos extractos antes. Las permutas entre criptos se valoran a 1 USD si una parte es una stablecoin en dólares y, si no, con el precio de Kraken del activo entregado o del recibido; la valoración se hace sola en segundo plano. Lo que trae CoinTracking cuenta como una cartera externa: un depósito posterior en Kraken o Coinbase sale primero de ahí.
 2. **Revisar**: completa automáticamente los datos contrastables y muestra lo que aún necesita información. Los dividendos netos pueden conciliarse con el reparto publicado y la cantidad con derecho en la fecha exdividendo. El bruto se reconstruye con esos datos y la retención por diferencia, conservando el neto importado. Se exige coincidencia de fecha, divisa e importe (un céntimo, más la diferencia comprobable entre 4 y 6 decimales por acción, con límite total de cinco céntimos). No se aplica un porcentaje supuesto al neto. Los importes reconstruidos y sus fuentes aparecen en el movimiento; un justificante del bróker permite corregirlos si su redondeo difiere. Las ediciones manuales se respetan. Los avisos de ingresos antiguos no se arrastran a otro ejercicio por vender después el mismo activo.
 3. **Mi Renta**: copia cada importe a su casilla con un clic y marca lo que ya has pasado a Renta Web. También exporta a Excel o PDF.
+   - **Dossier**: un documento del ejercicio para revisarlo con un gestor. Incluye las casillas, cada venta con las compras que consume, las rentas por activo, las pérdidas aplazadas y los criterios y ajustes aplicados (coste 0, regla de 2017, restos cerrados, correcciones a mano). Se imprime o se guarda en PDF desde el navegador.
+   - **Modelos 720 y 721**: valoran lo que tenías en brókers y exchanges extranjeros a 31 de diciembre, con el cierre de diciembre de cada activo (el año en curso, con el precio de hoy). La primera vez avisa si pasa de 50.000 €. Si anotas un modelo como presentado, en los años siguientes avisa cuando sube más de 20.000 € o cierras algo que declaraste. Las criptomonedas retiradas a una cartera se muestran aparte. Las cuentas de efectivo no entran en el cálculo.
+
+En **Inicio**, durante el año en curso, se ve hasta cuándo llegan los datos de cada bróker y se avisa si pasa más de un mes sin subir un extracto de uno en el que aún tienes algo. Del 1 de octubre al 31 de diciembre aparece además lo que podrías compensar antes de fin de año: tus pérdidas sin vender, cuánto bajaría la cuota y cuáles se aplazarían por haber comprado hace poco.
 
 Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá; los saldos a cero se ocultan salvo que actives el interruptor), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
 
@@ -72,11 +76,13 @@ Importe EUR ± Comisión ± Otros      = Total
 shared/           Tipos, decimales y lógica de cuadre (la usan servidor y cliente)
 server/engine/    Motor FIFO, regla de recompra, divisas e informe por casillas
 server/importers/ DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking
-server/           API local, SQLite, tipos del BCE y exportación a Excel
+server/           API local, SQLite, tipos del BCE, exportación a Excel, dossier, 720/721 y copias
 client/           Interfaz en React
 tests/            Pruebas del motor, importadores y flujo completo
 ```
 
 ## Copia de seguridad
 
-Guarda la carpeta `data/` completa. La cuenta original está en `data/fifo.db` y las adicionales en `data/profiles/`. Incluye las operaciones y su historial de todas las personas y está excluida de git. Haz la copia con la aplicación cerrada.
+Cada día que la aplicación está abierta guarda una copia comprimida de todas las cuentas en `data/backups/auto/` (o en `FIFO_BACKUP_DIR`). Conserva una por día de la última semana con copia, una por mes del último año y, durante un mes, las que hagas a mano y las de antes de restaurar. Las copias que dejes tú en `data/backups/` no se tocan. Desde **Ajustes → Copias de seguridad** puedes hacer una al momento o devolver la cuenta actual a como estaba en una copia; antes se guarda cómo está ahora y las demás cuentas no cambian.
+
+Para protegerte de una avería del disco, guarda también la carpeta `data/` completa en otro sitio. La cuenta original está en `data/fifo.db` y las adicionales en `data/profiles/`. Incluye las operaciones y su historial de todas las personas y está excluida de git. Haz esa copia con la aplicación cerrada.

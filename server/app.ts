@@ -9,7 +9,11 @@ import { ProfileError, allOps, createProfile, currentProfileId, getHistory, getO
 import { filedAndSettled, isNeutralFx } from './engine/report.ts';
 import { fifoHistory } from './engine/history.ts';
 import { runEngine } from './engine/fifo.ts';
+import { BACKUP_DIR, BackupError, listBackups, makeBackup, restoreBackup } from './backup.ts';
+import { brokerFreshness, yearEndReview } from './checkup.ts';
+import { dossier } from './dossier.ts';
 import { exportYear } from './export.ts';
+import { foreignReport } from './foreign.ts';
 import { performance, refreshPriceHistory } from './history.ts';
 import { refreshQuotes, storedQuotes } from './quotes.ts';
 import { resolutionRunning, scheduleResolution } from './resolution.ts';
@@ -34,6 +38,7 @@ app.use('/api/*', async (c, next) => {
 
 app.onError((err, c) => {
   if (err instanceof ProfileError) return c.json({ error: err.message }, 422);
+  if (err instanceof BackupError) return c.json({ error: err.message }, 422);
   if (err instanceof ValidationError) return c.json({ error: err.message, detail: err.detail }, 422);
   console.error(err);
   return c.json({ error: err.message }, 500);
@@ -156,6 +161,13 @@ app.get('/api/incomes', (c) => {
   const res = engine();
   return c.json({ incomes: res.incomes.filter((i) => i.year === y), fees: res.fees.filter((f) => f.year === y) });
 });
+app.get('/api/backups', (c) => c.json({ dir: BACKUP_DIR, items: listBackups() }));
+app.post('/api/backups', async (c) => c.json(await makeBackup('manual')));
+app.post('/api/backups/:id/restore', async (c) => { await restoreBackup(c.req.param('id')); return c.json({ ok: true }); });
+app.get('/api/freshness', (c) => c.json({ items: brokerFreshness() }));
+app.get('/api/year-end', (c) => c.json(yearEndReview()));
+app.get('/api/dossier/:year', (c) => c.json(dossier(Number(c.req.param('year')))));
+app.get('/api/foreign/:year', (c) => c.json(foreignReport(Number(c.req.param('year')))));
 app.get('/api/dividends', (c) => c.json({ items: engine().incomes.filter((i) => i.type === 'dividend') }));
 app.get('/api/portfolio', (c) => {
   const res = engine();
@@ -196,6 +208,11 @@ app.put('/api/settings', async (c) => {
   const cover = settings.shortfallCover;
   if (cover != null && (typeof cover !== 'object' || ![cover.from, cover.to].every((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) || cover.from > cover.to)) {
     throw new ValidationError('Revisa las fechas de las ventas sin compra previa.', null);
+  }
+  const filings = settings.foreignFilings;
+  if (filings !== undefined && (!Array.isArray(filings) || filings.some((f, i) => !f || !['720', '721'].includes(f.form) || !Number.isInteger(f.year) || f.year < 2012 || f.year > 2100
+    || typeof f.valueEur !== 'string' || !/^\d+(\.\d+)?$/.test(f.valueEur) || filings.findIndex((g) => g.form === f.form && g.year === f.year) !== i))) {
+    throw new ValidationError('Revisa los modelos 720 y 721 presentados.', null);
   }
   saveSettings({ ...getSettings(), ...settings });
   return c.json(getSettings());

@@ -16,5 +16,7 @@ export const HELP = {
   casilla: 'El número del campo donde va este importe en Renta Web. Haz clic en el importe para copiarlo.',
   dobleImposicion: 'Si otro país ya te retuvo, puedes descontarlo aquí hasta el límite de su convenio con España (normalmente el 15 %).',
   exceso: 'Lo retenido por encima del convenio no se descuenta en España: solo se recupera reclamándolo al otro país.',
-  posicion: 'Si tienes más de 50.000 € en el extranjero, por valor de mercado a 31 de diciembre, puede que debas presentar el modelo 720 (valores) o 721 (cripto).',
+  posicion: 'Lo que quedaba en cartera al acabar el año, con lo que te costó.',
+  cierre: 'Estimación de lo que bajaría la cuota si vendieras con pérdida lo justo para compensar tus ganancias de este año, a tu tipo del ahorro. No cuenta comisiones ni las pérdidas que se aplazarían por haber comprado hace poco.',
+  extranjero: 'El 720 informa de valores y fondos en el extranjero; el 721, de criptomonedas custodiadas fuera de España. La primera vez se presenta si el conjunto vale más de 50.000 € a 31 de diciembre. Después, solo si sube más de 20.000 € o cierras algo ya declarado. Las cuentas de efectivo no entran en este cálculo: revisa su saldo a 31 de diciembre y el saldo medio del último trimestre.',
 } as const;
