@@ -5,7 +5,7 @@ import { D } from '../../../shared/decimal.ts';
 import { BlockingBuys, groupLosses } from '../components/DeferredLoss.tsx';
 import { BROKER_LABEL, type Broker, type ForeignFiling, type ForeignForm, type ForeignFormReport, type ForeignReport } from '../../../shared/types.ts';
 import { api } from '../api.ts';
-import { Callout, CopyValue, Disclosure, Empty, Help, Loading, NumField, PageHead } from '../components/ui.tsx';
+import { Callout, CopyValue, Disclosure, Empty, Help, LoadError, Loading, NumField, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, isinOf, niceName, qty, signClass, signed } from '../format.ts';
@@ -101,7 +101,7 @@ const loadDone = (year: number, profileId: string): Set<string> => {
 
 export function Renta() {
   const { year, tick, go, state: { profileId } } = useApp();
-  const { data: rep } = useApi<YearReport>(`/report/${year}`, `${year}-${tick}`);
+  const { data: rep, error: loadError, reload } = useApi<YearReport>(`/report/${year}`, `${year}-${tick}`);
   // undefined: se abre solo lo siguiente por copiar. null: el usuario lo ha cerrado todo.
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
   const [doneSet, setDoneSet] = useState<Set<string>>(() => loadDone(year, profileId));
@@ -115,7 +115,7 @@ export function Renta() {
       return n;
     });
   };
-  if (!rep) return <><PageHead title={`Mi Renta ${year}`} /><Loading /></>;
+  if (!rep) return <><PageHead title={`Mi Renta ${year}`} year />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
 
   const rcm = rep.rcm;
   const interestTotal = D(rcm.interest).plus(D(rcm.staking)).toFixed(2);

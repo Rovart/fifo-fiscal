@@ -34,9 +34,13 @@ export function PageHead({ title, sub, year, children }: { title: ReactNode; sub
   );
 }
 
-export const Loading = () => <div className="skeleton" aria-label="Cargando" />;
+export const Loading = () => <div className="skeleton" role="status" aria-live="polite"><span className="sr-only">Cargando…</span></div>;
 
-export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function LoadError({ onRetry }: { onRetry: () => void }) {
+  return <Callout tone="error" title="No se pudieron cargar los datos" action={<button className="btn small" onClick={onRetry}>Reintentar</button>}>Comprueba la conexión con la aplicación.</Callout>;
+}
+
+export function Dialog({ title, onClose, children, className = '' }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
   useEffect(() => {
@@ -45,7 +49,7 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
     return () => { ref.current?.close(); previous?.focus(); };
   }, []);
   return createPortal(
-    <dialog ref={ref} className="dialog" aria-labelledby={id} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => {
+    <dialog ref={ref} className={`dialog ${className}`} aria-labelledby={id} onCancel={(e) => { e.preventDefault(); onClose(); }} onClick={(e) => {
       if (e.target !== e.currentTarget) return;
       const r = e.currentTarget.getBoundingClientRect();
       if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose();
@@ -68,7 +72,7 @@ export function Empty({ icon: Icon, title, tone, children }: { icon?: LucideIcon
 
 export function Callout({ tone = 'info', icon: Icon, title, children, action }: { tone?: 'info' | 'warn' | 'error' | 'ok'; icon?: LucideIcon; title?: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className={`callout ${tone}`}>
+    <div className={`callout ${tone}`} role={tone === 'error' ? 'alert' : undefined}>
       {Icon && <Icon size={18} />}
       <div className="body">
         {title && <div className="t">{title}</div>}
@@ -110,9 +114,9 @@ export function Help({ text }: { text: string }) {
 
 export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div className="segmented" role="tablist" aria-label={label}>
+    <div className="segmented" role="group" aria-label={label}>
       {options.map((o) => (
-        <button key={o.id} role="tab" aria-selected={value === o.id} className={value === o.id ? 'on' : ''} onClick={() => onChange(o.id)}>{o.label}</button>
+        <button key={o.id} aria-pressed={value === o.id} className={value === o.id ? 'on' : ''} onClick={() => onChange(o.id)}>{o.label}</button>
       ))}
     </div>
   );
@@ -156,22 +160,28 @@ export function CopyValue({ value, display, text }: { value: string; display?: s
 
 /** Panel lateral con salida animada. Cierra con Esc o clic fuera. */
 export function Sheet({ onClose, label, children }: { onClose: () => void; label: string; children: (close: () => void) => ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
   const [closing, setClosing] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const close = () => {
     if (closing) return;
     setClosing(true);
-    setTimeout(onClose, 150);
+    timer.current = setTimeout(onClose, 150);
   };
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+    const dialog = ref.current;
+    const previous = document.activeElement as HTMLElement | null;
+    dialog?.showModal();
+    return () => { clearTimeout(timer.current); dialog?.close(); previous?.focus(); };
+  }, []);
   return (
-    <>
-      <div className={`sheet-bg ${closing ? 'closing' : ''}`} onClick={close} />
-      <aside className={`sheet ${closing ? 'closing' : ''}`} role="dialog" aria-modal="true" aria-label={label}>{children(close)}</aside>
-    </>
+    <dialog ref={ref} className={`sheet ${closing ? 'closing' : ''}`} aria-label={label}
+      onCancel={(e) => { e.preventDefault(); close(); }}
+      onClick={(e) => {
+        if (e.target !== e.currentTarget) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) close();
+      }}>{children(close)}</dialog>
   );
 }
 

@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUpRight, RefreshCw, Wallet, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, type PortfolioData } from '../api.ts';
 import { useApp } from '../context.ts';
-import { eur, niceName, percent, qty, signClass } from '../format.ts';
+import { eur, niceName, percent, qty, signClass, units } from '../format.ts';
 import { holdings } from '../holdings.ts';
 import { useApi } from '../hooks.ts';
 import { Empty, Help, Loading } from './ui.tsx';
@@ -55,14 +55,13 @@ export function HoldingsPanel({ onClose }: { onClose: () => void }) {
           </div>
           <table className="holdings-table">
             <caption className="sr-only">Posiciones actuales según los movimientos importados, sumadas entre brókers.</caption>
-            <thead><tr><th scope="col">Activo</th><th scope="col">Cantidad</th><th scope="col" aria-sort="descending"><span className="inline">Total <ArrowDown size={12} aria-hidden="true" /> <Help text="Valor actual de cada posición en euros, de mayor a menor. Debajo, su ganancia o pérdida frente al coste de las unidades que conservas. No incluye ventas ni dividendos. — indica que falta el precio o el coste." /></span></th></tr></thead>
+            <thead><tr><th scope="col">Activo<span className="sr-only"> y cantidad</span></th><th scope="col" aria-sort="descending"><span className="inline">Total <ArrowDown size={12} aria-hidden="true" /> <Help text="Valor actual de cada posición en euros, de mayor a menor. Debajo, su ganancia o pérdida frente al coste de las unidades que conservas. No incluye ventas ni dividendos. — indica que falta el precio o el coste." /></span></th></tr></thead>
             <tbody>{portfolio.rows.map(({ position: p, ticker, valueEur, gainPercent }) => (
               <tr key={p.assetId}>
                 <th scope="row" title={`${niceName(p.assetName)} · ${p.assetId}`}>
                   <span className="holdings-symbol">{ticker ? `$${ticker}` : niceName(p.assetName)}</span>
-                  {ticker && <span className="holdings-name">{niceName(p.assetName)}</span>}
+                  <span className="holdings-name" title={p.quantity} aria-label={units(p.quantity, p.class, p.assetId)}>{qty(p.quantity)} {p.class === 'crypto' ? p.assetId : 'uds.'}</span>
                 </th>
-                <td className="num" title={p.quantity}>{qty(p.quantity)}</td>
                 <td className="num">
                   <span className="holdings-value" title={valueEur === null ? 'Sin precio disponible' : 'Valor actual en euros'}>{eur(valueEur)}</span>
                   <span className={`holdings-gain ${signClass(gainPercent)}`} title={gainPercent === null ? 'Sin precio o coste disponible' : 'Ganancia o pérdida sin vender'}>{gainPercent === null ? '—' : percent(gainPercent)}</span>
@@ -76,7 +75,7 @@ export function HoldingsPanel({ onClose }: { onClose: () => void }) {
       {portfolio && portfolio.rows.length > 0 && <footer className="holdings-foot">
         <div className="holdings-prices">
           <span className="small muted">{updated ? `Precios: ${updated}` : 'Sin precios actuales'}</span>
-          <button className="btn quiet icon" aria-label={busy ? 'Actualizando precios' : 'Actualizar precios'} title="Actualizar precios" disabled={busy} onClick={() => void refresh()}><RefreshCw size={16} className={busy ? 'holdings-refreshing' : undefined} /></button>
+          <button className="btn quiet small" aria-label={busy ? 'Actualizando precios' : 'Actualizar precios'} disabled={busy} onClick={() => void refresh()}><RefreshCw size={15} aria-hidden="true" className={busy ? 'holdings-refreshing' : undefined} /> {busy ? 'Actualizando…' : 'Actualizar'}</button>
         </div>
         <button className="link small inline" onClick={() => go('portfolio')}>Ver detalle <ArrowUpRight size={14} /></button>
       </footer>}

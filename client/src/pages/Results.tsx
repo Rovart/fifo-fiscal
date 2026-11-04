@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { D } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Disposal, type DisposalClass, type FeeEntry, type Income, type LossTranche } from '../../../shared/types.ts';
 import { BlockingBuys, groupLosses } from '../components/DeferredLoss.tsx';
-import { Disclosure, Empty, Help, PageHead, Segmented } from '../components/ui.tsx';
+import { Disclosure, Empty, Help, LoadError, Loading, PageHead, Segmented } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, initial, isinOf, niceName, qty, signClass, signed, units } from '../format.ts';
@@ -16,10 +16,10 @@ const CLASS_CHIPS: { id: DisposalClass; label: string }[] = [
 
 function Sales() {
   const { year, tick } = useApp();
-  const { data } = useApi<{ items: Disposal[]; tranches: LossTranche[] }>(`/disposals?year=${year}`, `${year}-${tick}`);
+  const { data, error, reload } = useApi<{ items: Disposal[]; tranches: LossTranche[] }>(`/disposals?year=${year}`, `${year}-${tick}`);
   const [open, setOpen] = useState<string | null>(null);
   const [klass, setKlass] = useState<DisposalClass | ''>('');
-  if (!data) return null;
+  if (!data) return error ? <LoadError onRetry={reload} /> : <Loading />;
   if (data.items.length === 0) return <div className="card"><Empty icon={BarChart3} title={`Sin ventas en ${year}`} /></div>;
   const present = CLASS_CHIPS.filter((c) => data.items.some((d) => d.class === c.id));
   const items = data.items.filter((d) => !klass || d.class === klass).sort((a, b) => (a.date < b.date ? 1 : -1));
@@ -111,8 +111,8 @@ const INCOME_META: Record<Income['type'], { label: string; icon: LucideIcon }> =
 
 function Incomes() {
   const { year, tick } = useApp();
-  const { data } = useApi<{ incomes: Income[]; fees: FeeEntry[] }>(`/incomes?year=${year}`, `${year}-${tick}`);
-  if (!data) return null;
+  const { data, error, reload } = useApi<{ incomes: Income[]; fees: FeeEntry[] }>(`/incomes?year=${year}`, `${year}-${tick}`);
+  if (!data) return error ? <LoadError onRetry={reload} /> : <Loading />;
   if (data.incomes.length === 0 && data.fees.length === 0) return <div className="card"><Empty icon={Coins} title={`Sin dividendos ni intereses en ${year}`} /></div>;
   const sum = (k: 'grossEur' | 'foreignTaxEur' | 'spanishTaxEur' | 'netEur') => data.incomes.reduce((s, i) => s.plus(D(i[k])), D(0));
   const withheld = sum('foreignTaxEur').plus(sum('spanishTaxEur'));

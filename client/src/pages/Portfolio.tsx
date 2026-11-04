@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { D } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type DisposalClass, type Position } from '../../../shared/types.ts';
 import { api, ApiError, type PortfolioData } from '../api.ts';
-import { Callout, Empty, Help, Loading, PageHead } from '../components/ui.tsx';
+import { Callout, Empty, Help, LoadError, Loading, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, initial, isinOf, niceName, price, qty, signClass, signed, symbol, units } from '../format.ts';
@@ -20,13 +20,13 @@ const ZERO_KEY = 'cartera-saldos-cero';
 
 export function Portfolio() {
   const { tick, go, changed, toast } = useApp();
-  const { data, reload } = useApi<PortfolioData>('/portfolio', `${tick}`);
+  const { data, error: loadError, reload } = useApi<PortfolioData>('/portfolio', `${tick}`);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showZero, setShowZero] = useState(() => { try { return localStorage.getItem(ZERO_KEY) === '1'; } catch { return false; } });
-  if (!data) return <><PageHead title="Cartera" /><Loading /></>;
+  if (!data) return <><PageHead title="Cartera" />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
   const held = data.positions.filter((p) => D(p.quantity).gt(0));
   // Un saldo que se ve como 0 o que no llega a un céntimo no es una posición que interese ver.
   const isZero = (p: Position) => isZeroPosition(p, data.quotes[p.assetId]);

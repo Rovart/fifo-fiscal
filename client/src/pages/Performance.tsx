@@ -4,7 +4,7 @@ import { D, ZERO } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type IncomeGroup, type PerformanceData, type PerformanceYear } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
 import { DivergingBars, StackBar, ValueChart, YearColumns } from '../components/charts.tsx';
-import { Callout, Disclosure, Empty, Help, Loading, PageHead, Segmented } from '../components/ui.tsx';
+import { Callout, Disclosure, Empty, Help, LoadError, Loading, PageHead, Segmented } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { eur, monthShort, niceName, percent, signClass, signed } from '../format.ts';
 import { HELP } from '../glossary.ts';
@@ -45,7 +45,7 @@ function Ranking({ title, rows }: { title: string; rows: { key: string; name: st
 
 export function Performance() {
   const { tick, changed, toast } = useApp();
-  const { data, reload } = useApi<PerformanceData>('/performance', `${tick}`);
+  const { data, error: loadError, reload } = useApi<PerformanceData>('/performance', `${tick}`);
   const [period, setPeriod] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +103,7 @@ export function Performance() {
     };
   }, [data, period]);
 
-  if (!data || !view) return <><PageHead title="Desempeño" /><Loading /></>;
+  if (!data || !view) return <><PageHead title="Desempeño" />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
   const button = (
     <button className={`btn ${data.hasHistory ? '' : 'primary'}`} disabled={refreshing} onClick={() => void refresh()}>
       <RefreshCw size={15} /> {refreshing ? 'Buscando…' : data.hasHistory ? 'Actualizar precios' : 'Cargar precios'}

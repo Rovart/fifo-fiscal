@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { BROKER_LABEL, KIND_LABEL, type Broker, type OpKind } from '../../../shared/types.ts';
 import type { OpRow } from '../api.ts';
 import { KIND_ICON } from '../components/kinds.tsx';
-import { Empty, PageHead } from '../components/ui.tsx';
+import { Empty, LoadError, Loading, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { dayMonth, eur, monthLabel, niceName, price, qty, symbol } from '../format.ts';
 import { useApi } from '../hooks.ts';
@@ -55,7 +55,7 @@ export function Movements() {
   if (deleted) params.set('flag', 'deleted');
   else if (f?.flag) params.set('flag', f.flag);
   params.set('limit', String(limit));
-  const { data } = useApi<{ total: number; items: OpRow[] }>(`/operations?${params}`, `${tick}`);
+  const { data, error, reload } = useApi<{ total: number; items: OpRow[] }>(`/operations?${params}`, `${tick}`);
 
   let month = '';
   return (
@@ -63,20 +63,27 @@ export function Movements() {
       <PageHead title="Movimientos" year>
         <button className="btn primary" onClick={() => openEditor(null)}><Plus size={16} /> Añadir</button>
       </PageHead>
-      <div className="chips" role="group" aria-label="Filtrar">
+      <div className="chips movement-filters" role="group" aria-label="Filtrar">
         {FILTERS.map((x) => <button key={x.id} className={`chip ${filter === x.id ? 'on' : ''}`} aria-pressed={filter === x.id} onClick={() => setFilter(x.id)}>{x.label}</button>)}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <Search size={16} className="faint" style={{ position: 'absolute', left: 12, top: 12 }} />
-          <input className="input" style={{ paddingLeft: 34 }} placeholder="Buscar" aria-label="Buscar activo" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="movement-tools">
+        <div className="movement-search">
+          <Search size={16} className="faint" aria-hidden="true" />
+          <input className="input" placeholder="Buscar activo…" aria-label="Buscar activo" autoComplete="off" spellCheck={false} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <label className="movement-filter-select field">
+          <span className="sr-only">Tipo de movimiento</span>
+          <select className="input" value={filter} onChange={(e) => setFilter(e.target.value)}>{FILTERS.map((x) => <option key={x.id} value={x.id}>{x.id === 'all' ? 'Todos los tipos' : x.label}</option>)}</select>
+        </label>
         <select className="input" style={{ width: 'auto' }} value={broker} onChange={(e) => setBroker(e.target.value)} aria-label="Bróker">
           <option value="">Todos los brókers</option>
           {(Object.keys(BROKER_LABEL) as Broker[]).map((b) => <option key={b} value={b}>{BROKER_LABEL[b]}</option>)}
         </select>
       </div>
-      <div className="card flush">
+      {error && <LoadError onRetry={reload} />}
+      {!data && !error && <Loading />}
+      {data && <div className="card flush">
+        <div className="card-title movement-count"><span className="small muted" role="status" aria-live="polite">{data.total.toLocaleString('es-ES')} {data.total === 1 ? 'movimiento' : 'movimientos'}{q ? ' · Todos los años' : ''}</span></div>
         {data && data.items.length === 0 ? (
           <Empty title={q ? 'Sin resultados' : 'No hay movimientos aquí'} />
         ) : (
@@ -109,7 +116,7 @@ export function Movements() {
         {data && data.total > data.items.length && (
           <div className="more"><button className="btn small" onClick={() => setLimit(limit + 100)}>Ver más ({data.total - data.items.length})</button></div>
         )}
-      </div>
+      </div>}
       <div><button className="link muted small" onClick={() => setDeleted(!deleted)}>{deleted ? 'Volver a los movimientos' : 'Ver eliminados'}</button></div>
     </>
   );

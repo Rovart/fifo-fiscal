@@ -2,7 +2,7 @@ import { AlertCircle, ArrowRight, CheckCircle2, CircleDashed, FileClock, ShieldC
 import type { FormSection, YearReport } from '../../../server/engine/report.ts';
 import { D, Decimal } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type BrokerFreshness, type YearEndReview } from '../../../shared/types.ts';
-import { Callout, Help, Loading, YearPicker } from '../components/ui.tsx';
+import { Callout, Help, LoadError, Loading, PageHead, YearPicker } from '../components/ui.tsx';
 import { DivergingBars } from '../components/charts.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
@@ -14,7 +14,7 @@ function Welcome() {
   return (
     <>
       <div className="welcome">
-        <h1>Lo que debes declarar de tus inversiones, sin complicaciones</h1>
+        <h1>Tu renta de inversiones</h1>
         <p>Sube los extractos de tus brókers. Nosotros hacemos los cálculos.</p>
         <button className="btn primary" onClick={() => go('upload')}><UploadIcon size={16} /> Subir mis extractos</button>
       </div>
@@ -178,12 +178,12 @@ function WhereBars({ sections }: { sections: FormSection[] }) {
 
 export function Home() {
   const { state, year, tick, go } = useApp();
-  const { data: rep } = useApi<YearReport>(state.counts.operations ? `/report/${year}` : null, `${tick}`);
+  const { data: rep, error, reload } = useApi<YearReport>(state.counts.operations ? `/report/${year}` : null, `${tick}`);
   const current = year === Number(state.today.slice(0, 4));
   const { data: fresh } = useApi<{ items: BrokerFreshness[] }>(state.counts.operations && current ? '/freshness' : null, `${tick}`);
   const closing = current && state.today.slice(5, 7) >= '10';
   if (state.counts.operations === 0) return <Welcome />;
-  if (!rep) return <Loading />;
+  if (!rep) return <><PageHead title={`Tu ${year}`} year />{error ? <LoadError onRetry={reload} /> : <Loading />}</>;
   const sales = rep.savings.gppBalance;
   const income = rep.savings.rcmBalance;
   const total = D(sales).plus(D(income)).toFixed(2);

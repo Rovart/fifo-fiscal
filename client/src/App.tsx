@@ -1,10 +1,12 @@
-import { BarChart3, Check, CircleHelp, Coins, Home as HomeIcon, ListOrdered, Settings as SettingsIcon, Wallet, TrendingUp } from 'lucide-react';
+import { Check, Menu, PanelRightOpen, Wallet } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Operation } from '../../shared/types.ts';
 import { api, getProfileId, selectProfile, type AppState } from './api.ts';
 import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
 import { HoldingsPanel } from './components/HoldingsPanel.tsx';
+import { NavigationLinks } from './components/NavigationLinks.tsx';
+import { Dialog } from './components/ui.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
 import { Dividends } from './pages/Dividends.tsx';
 import { Dossier } from './pages/Dossier.tsx';
@@ -40,7 +42,8 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
   const [toast, setToast] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ op: Operation | null; prefill?: Partial<Operation> } | null>(null);
   const [holdingsOpen, setHoldingsOpen] = useState(false);
-  const holdingsButton = useRef<HTMLButtonElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const holdingsOpener = useRef<HTMLElement | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const hadData = useRef(false);
 
@@ -77,6 +80,13 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  useEffect(() => {
+    const wide = window.matchMedia('(min-width: 821px)');
+    const closeMenu = () => { if (wide.matches) setMenuOpen(false); };
+    wide.addEventListener('change', closeMenu);
+    return () => wide.removeEventListener('change', closeMenu);
+  }, []);
+
   const showToast = useCallback((m: string) => {
     setToast(m);
     clearTimeout(toastTimer.current);
@@ -95,40 +105,26 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
   if (loadError) return <div className="main"><div className="callout error"><div className="body">{loadError}</div><button className="btn" onClick={() => profileId !== 'default' ? switchProfile('default') : setTick((t) => t + 1)}>Volver a intentar</button></div></div>;
   if (!ctx || !state) return null;
 
-  const hasData = state.counts.operations > 0;
-  const yearCounts = state.counts.byYear[ctx.year] ?? { errors: 0, warnings: 0 };
-  const pending = yearCounts.errors + yearCounts.warnings;
-  const NavBtn = ({ id, children }: { id: Page; children: React.ReactNode }) => (
-    <button className={`nav-btn ${page === id ? 'on' : ''}`} aria-current={page === id ? 'page' : undefined} onClick={() => ctx.go(id)}>{children}</button>
-  );
-  const Step = ({ n, done }: { n: number; done?: boolean }) => (
-    <span className={`step-dot ${done ? 'done' : ''}`}>{done ? <Check size={12} strokeWidth={3} /> : n}</span>
-  );
+  const navigate = (next: Page) => { ctx.go(next); setMenuOpen(false); };
+  const toggleHoldings = (opener: HTMLElement) => { holdingsOpener.current = opener; setHoldingsOpen((open) => !open); };
 
   return (
     <Ctx.Provider value={ctx}>
+      <a className="skip-link" href="#main-content" onClick={(e) => { e.preventDefault(); document.getElementById('main-content')?.focus(); }}>Saltar al contenido</a>
       <div className={`layout${holdingsOpen ? ' with-holdings' : ''}`}>
+        <header className="mobile-bar no-print">
+          <button className="btn quiet icon" aria-label="Abrir menú" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Menu size={21} aria-hidden="true" /></button>
+          <a className="mobile-brand" href="#home" onClick={(e) => { e.preventDefault(); navigate('home'); }}><span className="brand-mark" aria-hidden="true">F</span> FIFO Fiscal</a>
+          <button className="btn quiet icon" aria-label="Mi cartera" aria-haspopup="dialog" aria-expanded={holdingsOpen} aria-controls={holdingsOpen ? 'holdings-panel' : undefined} onClick={(e) => toggleHoldings(e.currentTarget)}><Wallet size={21} aria-hidden="true" /></button>
+        </header>
         <nav className="side" aria-label="Secciones">
           <div className="brand"><span className="brand-mark">F</span>FIFO Fiscal</div>
           <ProfileSwitcher />
-          <NavBtn id="home"><HomeIcon size={18} /> Inicio</NavBtn>
-          <div className="nav-group">Tu declaración</div>
-          <NavBtn id="upload"><Step n={1} done={hasData} /> Documentos</NavBtn>
-          <NavBtn id="review">
-            <Step n={2} done={hasData && pending === 0} /> <span className="grow">Revisar</span>
-            {pending > 0 && <span className={`badge ${yearCounts.errors === 0 ? 'soft' : ''}`}>{pending > 99 ? '99+' : pending}</span>}
-          </NavBtn>
-          <NavBtn id="renta"><Step n={3} /> Mi Renta</NavBtn>
-          <div className="nav-group">Consultar</div>
-          <NavBtn id="movements"><ListOrdered size={18} /> Movimientos</NavBtn>
-          <NavBtn id="portfolio"><Wallet size={18} /> Cartera</NavBtn>
-          <NavBtn id="results"><BarChart3 size={18} /> Resultados</NavBtn>
-          <NavBtn id="dividends"><Coins size={18} /> Dividendos</NavBtn>
-          <NavBtn id="performance"><TrendingUp size={18} /> Desempeño</NavBtn>
-          <NavBtn id="whatif"><CircleHelp size={18} /> ¿Y si vendo?</NavBtn>
-          <div className="side-foot"><NavBtn id="settings"><SettingsIcon size={18} /> Ajustes</NavBtn></div>
+          <NavigationLinks page={page} onNavigate={navigate}>
+            <button className="nav-btn holdings-launcher" aria-haspopup="dialog" aria-expanded={holdingsOpen} aria-controls={holdingsOpen ? 'holdings-panel' : undefined} onClick={(e) => toggleHoldings(e.currentTarget)}><PanelRightOpen size={18} aria-hidden="true" /> Mi cartera</button>
+          </NavigationLinks>
         </nav>
-        <main className="main">
+        <main id="main-content" className="main" tabIndex={-1}>
           <div className="page">
             {page === 'home' && <Home />}
             {page === 'upload' && <Upload />}
@@ -144,10 +140,14 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
             {page === 'dossier' && <Dossier />}
           </div>
         </main>
-        {holdingsOpen ? <HoldingsPanel onClose={() => {
+        {holdingsOpen && <HoldingsPanel onClose={() => {
           setHoldingsOpen(false);
-          requestAnimationFrame(() => holdingsButton.current?.focus());
-        }} /> : <button ref={holdingsButton} className="btn holdings-toggle no-print" aria-haspopup="dialog" onClick={() => setHoldingsOpen(true)}><Wallet size={18} /> Mi cartera</button>}
+          requestAnimationFrame(() => holdingsOpener.current?.focus());
+        }} />}
+        {menuOpen && <Dialog title="FIFO Fiscal" className="navigation-dialog" onClose={() => setMenuOpen(false)}>
+          <ProfileSwitcher />
+          <nav className="mobile-navigation" aria-label="Secciones"><NavigationLinks page={page} onNavigate={navigate} /></nav>
+        </Dialog>}
         {editor && (
           <OperationEditor
             op={editor.op}

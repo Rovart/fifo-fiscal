@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { D, parseLocaleNumber } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type Issue, type Operation } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
-import { Callout, Disclosure, Empty, Loading, PageHead } from '../components/ui.tsx';
+import { Callout, Disclosure, Empty, LoadError, Loading, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { dateShort, niceName, plain, qty } from '../format.ts';
 import { useApi } from '../hooks.ts';
@@ -191,7 +191,7 @@ function BalanceRow({ p, onSaved }: { p: PositionRow; onSaved: () => void }) {
 
 export function Review() {
   const { tick, go, changed, year, setYear, state } = useApp();
-  const { data } = useApi<Checks>(`/checks?year=${year}`, `${tick}`);
+  const { data, error: loadError, reload } = useApi<Checks>(`/checks?year=${year}`, `${tick}`);
 
   const groups = useMemo(() => {
     const all = data?.issues ?? [];
@@ -210,7 +210,7 @@ export function Review() {
     };
   }, [data]);
 
-  if (!data) return <><PageHead title="Revisar" year /><Loading /></>;
+  if (!data) return <><PageHead title="Revisar" year />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
   if (data.summary.operations === 0) {
     return (
       <>
