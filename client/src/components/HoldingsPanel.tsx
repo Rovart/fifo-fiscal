@@ -1,4 +1,4 @@
-import { ArrowUpRight, RefreshCw, Wallet, X } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, RefreshCw, Wallet, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, type PortfolioData } from '../api.ts';
 import { useApp } from '../context.ts';
@@ -55,15 +55,18 @@ export function HoldingsPanel({ onClose }: { onClose: () => void }) {
           </div>
           <table className="holdings-table">
             <caption className="sr-only">Posiciones actuales según los movimientos importados, sumadas entre brókers.</caption>
-            <thead><tr><th scope="col">Activo</th><th scope="col">Cantidad</th><th scope="col">Ganancia <Help text="Ganancia o pérdida de las unidades que conservas frente a su coste de compra, en euros. No incluye ventas ni dividendos. — indica que falta el precio o el coste." /></th></tr></thead>
-            <tbody>{portfolio.rows.map(({ position: p, ticker, gainPercent }) => (
+            <thead><tr><th scope="col">Activo</th><th scope="col">Cantidad</th><th scope="col" aria-sort="descending"><span className="inline">Total <ArrowDown size={12} aria-hidden="true" /> <Help text="Valor actual de cada posición en euros, de mayor a menor. Debajo, su ganancia o pérdida frente al coste de las unidades que conservas. No incluye ventas ni dividendos. — indica que falta el precio o el coste." /></span></th></tr></thead>
+            <tbody>{portfolio.rows.map(({ position: p, ticker, valueEur, gainPercent }) => (
               <tr key={p.assetId}>
                 <th scope="row" title={`${niceName(p.assetName)} · ${p.assetId}`}>
                   <span className="holdings-symbol">{ticker ? `$${ticker}` : niceName(p.assetName)}</span>
                   {ticker && <span className="holdings-name">{niceName(p.assetName)}</span>}
                 </th>
                 <td className="num" title={p.quantity}>{qty(p.quantity)}</td>
-                <td className={`num ${signClass(gainPercent)}`} title={gainPercent === null ? 'Sin precio o coste disponible' : undefined}>{gainPercent === null ? '—' : percent(gainPercent)}</td>
+                <td className="num">
+                  <span className="holdings-value" title={valueEur === null ? 'Sin precio disponible' : 'Valor actual en euros'}>{eur(valueEur)}</span>
+                  <span className={`holdings-gain ${signClass(gainPercent)}`} title={gainPercent === null ? 'Sin precio o coste disponible' : 'Ganancia o pérdida sin vender'}>{gainPercent === null ? '—' : percent(gainPercent)}</span>
+                </td>
               </tr>
             ))}</tbody>
           </table>

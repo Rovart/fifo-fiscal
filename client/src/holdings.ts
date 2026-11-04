@@ -29,7 +29,15 @@ export function holdings(positions: Position[], quotes: Record<string, Portfolio
         gainPercent: value !== null && cost.gt(0) ? value.minus(cost).div(cost).times(100).toFixed() : null,
       };
     })
-    .sort((a, b) => (a.ticker || a.position.assetName).localeCompare(b.ticker || b.position.assetName, 'es'));
+    .sort((a, b) => {
+      if (a.valueEur === null && b.valueEur !== null) return 1;
+      if (b.valueEur === null && a.valueEur !== null) return -1;
+      if (a.valueEur !== null && b.valueEur !== null) {
+        const byValue = D(b.valueEur).comparedTo(D(a.valueEur));
+        if (byValue !== 0) return byValue;
+      }
+      return (a.ticker || a.position.assetName).localeCompare(b.ticker || b.position.assetName, 'es');
+    });
 
   const priced = rows.filter((row) => row.valueEur !== null);
   const value = priced.reduce((sum, row) => sum.plus(D(row.valueEur)), D(0));

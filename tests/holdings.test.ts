@@ -39,6 +39,21 @@ describe('Cartera de consulta', () => {
     expect(D(result.gainPercent).toFixed(2)).toBe('4.55');
   });
 
+  it('ordena por valor total en euros de mayor a menor y deja al final los activos sin precio', () => {
+    const result = holdings([
+      position('NO_PRICE', '10', '100'), position('ZERO', '1', '100'),
+      position('EXPENSIVE_UNIT', '1', '100'), position('BIG_POSITION', '20', '100'),
+      position('B_TIE', '2', '100'), position('A_TIE', '1', '100'),
+    ], {
+      ZERO: quote('0'), EXPENSIVE_UNIT: quote('100'), BIG_POSITION: quote('20'),
+      B_TIE: quote('10'), A_TIE: quote('20'),
+    }, []);
+    expect(result.rows.map((row) => [row.ticker, row.valueEur])).toEqual([
+      ['BIG_POSITION', '400'], ['EXPENSIVE_UNIT', '100'],
+      ['A_TIE', '20'], ['B_TIE', '20'], ['ZERO', '0'], ['NO_PRICE', null],
+    ]);
+  });
+
   it('conserva activos sin precio o coste y no presenta un porcentaje parcial como total', () => {
     const result = holdings([position('PRICED', '1', '100'), position('UNKNOWN', '12', '0')], {
       PRICED: quote('120'),

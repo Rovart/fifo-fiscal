@@ -101,8 +101,8 @@ svg { flex-shrink: 0; }
 .holdings-return.gain { background: var(--gain-soft); }
 .holdings-return.loss { background: var(--loss-soft); }
 .holdings-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
-.holdings-table th:first-child { width: 39%; }
-.holdings-table th:nth-child(2) { width: 35%; }
+.holdings-table th:first-child { width: 32%; }
+.holdings-table th:nth-child(2) { width: 34%; }
 .holdings-table thead th { padding: 0 0 10px; font-size: 12px; font-weight: 400; color: var(--ink-2); text-align: right; white-space: nowrap; }
 .holdings-table thead th:first-child { text-align: left; }
 .holdings-table .help { width: 14px; height: 14px; font-size: 10px; margin-left: 1px; }
@@ -111,6 +111,8 @@ svg { flex-shrink: 0; }
 .holdings-table td { text-align: right; overflow-wrap: anywhere; white-space: normal; }
 .holdings-table td:nth-child(2) { font-size: 12px; }
 .holdings-table td:last-child { padding-left: 6px; font-weight: 550; white-space: nowrap; }
+.holdings-value, .holdings-gain { display: block; }
+.holdings-gain { font-size: 12px; margin-top: 2px; }
 .holdings-symbol, .holdings-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .holdings-symbol { font-size: 14px; font-weight: 550; }
 .holdings-name { color: var(--ink-2); font-size: 11px; margin-top: 2px; }
