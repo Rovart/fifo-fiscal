@@ -45,7 +45,11 @@ export function Dossier() {
   const interest = D(rcm.interest).plus(D(rcm.staking)).toFixed(2);
   const dividends = D(rcm.dividends).plus(D(rcm.capitalExcess)).toFixed(2);
   const issues = rep.issues.filter((i) => i.severity !== 'info');
-  const deferred = rep.deferred.tranches.filter((t) => t.year === year || Number(t.originDate.slice(0, 4)) === year);
+  const deferred = data.deferred;
+  const fromYear = (t: { saleDate: string }) => Number(t.saleDate.slice(0, 4));
+  const deferredOut = deferred.filter((t) => fromYear(t) === year).reduce((s, t) => s.plus(D(t.amountEur)), D(0));
+  const deferredIn = deferred.filter((t) => fromYear(t) < year).reduce((s, t) => s.plus(D(t.amountEur)), D(0));
+  const incomeTotal = (k: 'grossEur' | 'foreignTaxEur' | 'spanishTaxEur') => data.incomes.reduce((s, i) => s.plus(D(i[k])), D(0)).toFixed(2);
   const filedForms = data.foreign.forms.filter((f) => nz(f.valueEur) || f.required || f.filed);
 
   return (
@@ -173,19 +177,23 @@ export function Dossier() {
         {deferred.length > 0 && (
           <section className="card">
             <h2>Pérdidas aplazadas por recompra</h2>
+            <p className="small muted">Ventas con pérdida en las que compraste el mismo valor en los dos meses anteriores o posteriores: la pérdida cuenta cuando vendes lo recomprado. Solo aparecen las que cambian de año; si vuelve a contar dentro de {year}, no cambia nada.</p>
             <table className="mini-table">
-              <thead><tr><th>Activo</th><th>Venta</th><th className="r">Pérdida</th><th>Situación</th></tr></thead>
+              <thead><tr><th>Activo</th><th>Venta</th><th className="r">Pérdida</th><th className="gap">Situación</th></tr></thead>
               <tbody>
                 {deferred.map((t) => (
-                  <tr key={t.id}>
+                  <tr key={`${t.assetId}|${t.saleDate}|${t.status}|${t.year}`}>
                     <td>{niceName(t.assetName)}</td>
-                    <td>{dateShort(t.originDate)}</td>
+                    <td>{dateShort(t.saleDate)}</td>
                     <td className="r">{eur(t.amountEur)}</td>
-                    <td>{t.status === 'integrated' ? `Cuenta en ${t.year}` : t.status === 'blocked' ? 'Aplazada hasta vender lo recomprado' : `Pendiente hasta el ${dateShort(t.windowEnd)}`}</td>
+                    <td className="gap">{fromYear(t) < year ? `De ${fromYear(t)}, cuenta en ${year}` : t.status === 'integrated' ? `Pasa a ${t.year}` : t.status === 'blocked' ? 'Sigue aplazada' : `Cuenta si no recompras hasta el ${dateShort(t.windowEnd)}`}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p className="small" style={{ marginTop: 10 }}>
+              {[deferredOut.gt(0) && `De ${year} se aplazan ${eur(deferredOut.toFixed(2))}`, deferredIn.gt(0) && `de años anteriores cuentan este año ${eur(deferredIn.toFixed(2))}`].filter(Boolean).join('; ').replace(/^./, (c) => c.toUpperCase())}.
+            </p>
           </section>
         )}
 
@@ -197,10 +205,10 @@ export function Dossier() {
                 <thead><tr><th>Activo</th><th>Tipo</th><th>Dónde</th><th className="r">Cobros</th><th className="r">Bruto</th><th className="r">Retenido fuera</th><th className="r">Retenido en España</th></tr></thead>
                 <tbody>
                   {data.incomes.map((i) => (
-                    <tr key={`${i.assetId}|${i.type}|${i.broker}`}>
+                    <tr key={`${i.assetId}|${i.type}`}>
                       <td>{niceName(i.assetName)}{i.country && <span className="faint small"> · {i.country}</span>}</td>
                       <td>{INCOME[i.type]}</td>
-                      <td>{place(i.broker)}</td>
+                      <td>{i.brokers.map(place).join(', ')}</td>
                       <td className="r">{i.count}</td>
                       <td className="r">{eur(i.grossEur)}</td>
                       <td className="r">{eur(i.foreignTaxEur)}</td>
@@ -208,6 +216,14 @@ export function Dossier() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4}>Total</td>
+                    <td className="r">{eur(incomeTotal('grossEur'))}</td>
+                    <td className="r">{eur(incomeTotal('foreignTaxEur'))}</td>
+                    <td className="r">{eur(incomeTotal('spanishTaxEur'))}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
             {rep.doubleTax.length > 0 && (

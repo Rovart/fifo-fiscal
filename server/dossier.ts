@@ -1,17 +1,18 @@
 import { D, ZERO, cents } from '../shared/decimal.ts';
-import type { DossierAsset, DossierIncome, DossierLot, DossierNote, ForeignReport } from '../shared/types.ts';
+import type { DossierAsset, DossierDeferred, DossierIncome, DossierLot, DossierNote, ForeignReport, Income } from '../shared/types.ts';
 import { allOps, currentProfileId, getSettings, listProfiles } from './db.ts';
 import { isNeutralFx, type YearReport } from './engine/report.ts';
 import { foreignReport } from './foreign.ts';
 import { engine, report } from './service.ts';
 
 export interface Dossier {
-  year: number; profile: string; generatedAt: string; report: YearReport; assets: DossierAsset[]; incomes: DossierIncome[];
+  year: number; profile: string; generatedAt: string; report: YearReport; assets: DossierAsset[]; incomes: DossierIncome[]; deferred: DossierDeferred[];
   notes: DossierNote[]; foreign: ForeignReport;
 }
 
 const day = (s: string) => s.slice(0, 10);
 const sum = (xs: string[]) => cents(xs.reduce((s, x) => s.plus(D(x)), ZERO));
+const INCOME_ORDER: Income['type'][] = ['dividend', 'capital_excess', 'interest', 'bond', 'staking', 'reward'];
 
 /** Todo lo que un gestor necesita para revisar el ejercicio: casillas, cada venta con sus compras y las decisiones tomadas. */
 export function dossier(year: number): Dossier {
@@ -40,10 +41,12 @@ export function dossier(year: number): Dossier {
     ...a, proceedsEur: sum(a.sales.map((s) => s.proceedsEur)), costEur: sum(a.sales.map((s) => s.costEur)), gainEur: sum(a.sales.map((s) => s.gainEur)),
   })).sort((a, b) => order.indexOf(a.section) - order.indexOf(b.section) || a.assetName.localeCompare(b.assetName));
 
+  // Un activo cobrado en varios brókers va en una sola línea.
   const groups = new Map<string, DossierIncome>();
   for (const i of res.incomes.filter((x) => x.year === year)) {
-    const key = `${i.assetId}|${i.type}|${i.broker}`;
-    const g = groups.get(key) ?? { assetId: i.assetId, assetName: i.assetName, type: i.type, broker: i.broker, country: i.country, count: 0, grossEur: '0', foreignTaxEur: '0', spanishTaxEur: '0', netEur: '0' };
+    const key = `${i.assetId}|${i.type}`;
+    const g = groups.get(key) ?? { assetId: i.assetId, assetName: i.assetName, type: i.type, brokers: [], country: i.country, count: 0, grossEur: '0', foreignTaxEur: '0', spanishTaxEur: '0', netEur: '0' };
+    if (!g.brokers.includes(i.broker)) g.brokers.push(i.broker);
     g.count++;
     g.grossEur = cents(D(g.grossEur).plus(D(i.grossEur)));
     g.foreignTaxEur = cents(D(g.foreignTaxEur).plus(D(i.foreignTaxEur)));
@@ -51,7 +54,26 @@ export function dossier(year: number): Dossier {
     g.netEur = cents(D(g.netEur).plus(D(i.netEur)));
     groups.set(key, g);
   }
-  const incomes = [...groups.values()].sort((a, b) => a.type.localeCompare(b.type) || D(b.grossEur).cmp(D(a.grossEur)));
+  const incomes = [...groups.values()]
+    .filter((g) => !D(g.grossEur).isZero() || !D(g.foreignTaxEur).isZero() || !D(g.spanishTaxEur).isZero())
+    .sort((a, b) => INCOME_ORDER.indexOf(a.type) - INCOME_ORDER.indexOf(b.type) || D(b.grossEur).cmp(D(a.grossEur)));
+
+  // Solo lo que cambia de año: lo de este año que se aplaza y lo de años anteriores que cuenta ahora.
+  // Una pérdida aplazada que vuelve a contar dentro del mismo año no cambia nada.
+  // El motor guarda un tramo por cada compra que consume la venta; al gestor le basta uno por venta y situación.
+  const movesYear = (t: (typeof rep.deferred.tranches)[number]) => {
+    const from = Number(t.originDate.slice(0, 4));
+    return from === year ? t.status !== 'integrated' || t.year > year : from < year && t.status === 'integrated' && t.year === year;
+  };
+  const deferredGroups = new Map<string, DossierDeferred>();
+  for (const t of rep.deferred.tranches.filter(movesYear)) {
+    const key = `${t.assetId}|${day(t.originDate)}|${t.status}|${t.year}`;
+    const g = deferredGroups.get(key) ?? { assetId: t.assetId, assetName: t.assetName, saleDate: day(t.originDate), amountEur: '0', status: t.status, year: t.year, windowEnd: t.windowEnd };
+    g.amountEur = cents(D(g.amountEur).plus(D(t.amountEur)));
+    if (t.windowEnd > g.windowEnd) g.windowEnd = t.windowEnd;
+    deferredGroups.set(key, g);
+  }
+  const deferred = [...deferredGroups.values()].sort((a, b) => a.assetName.localeCompare(b.assetName) || a.saleDate.localeCompare(b.saleDate));
 
   const name = (id: string) => (id === 'CRYPTO:*' ? 'Todas las criptomonedas' : id === '*' ? 'Todo' : res.positions.find((p) => p.assetId === id)?.assetName ?? byAsset.get(id)?.assetName ?? id);
   const notes: DossierNote[] = [];
@@ -82,5 +104,5 @@ export function dossier(year: number): Dossier {
   notes.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
 
   const profile = listProfiles().find((p) => p.id === currentProfileId())?.name ?? '';
-  return { year, profile, generatedAt: new Date().toISOString(), report: rep, assets, incomes, notes, foreign: foreignReport(year) };
+  return { year, profile, generatedAt: new Date().toISOString(), report: rep, assets, incomes, deferred, notes, foreign: foreignReport(year) };
 }

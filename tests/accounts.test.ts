@@ -420,6 +420,37 @@ describe('Dossier para el gestor', () => {
     expect(d.notes.map((n: { text: string }) => n.text)).toContain('Una venta tiene una parte sin compra que la respalde: esa parte va con coste 0.');
     expect(d.foreign.forms).toHaveLength(2);
   });
+
+  it('agrupa por venta las pérdidas aplazadas que cambian de año y une los cobros de un activo en varios brókers', async () => {
+    const profile = db.createProfile('Dossier aplazadas');
+    const trade = (kind: 'buy' | 'sell', date: string, assetId: string, quantity: string, price: string) => {
+      const total = (Number(quantity) * Number(price)).toFixed(2);
+      svc.createOp({ kind, datetime: `${date}T12:00:00`, assetId, assetName: assetId, assetClass: 'stock', quantity, unitPrice: price, currency: 'EUR', fxRate: '1', grossLocal: total, grossEur: total, totalEur: total, broker: 'degiro' });
+    };
+    const dividend = (date: string, broker: 'degiro' | 'trade_republic', gross: string) => svc.createOp({
+      kind: 'dividend', datetime: `${date}T12:00:00`, assetId: 'WASH', assetName: 'WASH', assetClass: 'stock', currency: 'EUR', fxRate: '1', grossLocal: gross, grossEur: gross, totalEur: gross, broker,
+    });
+    db.withProfile(profile.id, () => {
+      // Aplazada en 2024, cuenta en 2025 al vender lo recomprado.
+      trade('buy', '2024-03-01', 'WASH', '5', '100');
+      trade('buy', '2024-03-02', 'WASH', '5', '100');
+      trade('sell', '2024-11-01', 'WASH', '10', '80');
+      trade('buy', '2024-11-10', 'WASH', '10', '80');
+      trade('sell', '2025-03-01', 'WASH', '10', '90');
+      // Aplazada y recuperada dentro de 2025: no cambia nada y no se lista.
+      trade('buy', '2025-01-02', 'SAME', '10', '100');
+      trade('sell', '2025-02-01', 'SAME', '10', '80');
+      trade('buy', '2025-02-10', 'SAME', '10', '80');
+      trade('sell', '2025-06-01', 'SAME', '10', '85');
+      dividend('2025-04-01', 'degiro', '3');
+      dividend('2025-05-01', 'trade_republic', '2');
+    });
+    const deferred = async (year: number) => (await (await request(`/api/dossier/${year}`, profile.id)).json()).deferred;
+    expect(await deferred(2024)).toEqual([{ assetId: 'WASH', assetName: 'WASH', saleDate: '2024-11-01', amountEur: '200.00', status: 'integrated', year: 2025, windowEnd: expect.any(String) }]);
+    expect((await deferred(2025)).map((t: { assetId: string; saleDate: string; amountEur: string }) => [t.assetId, t.saleDate, t.amountEur])).toEqual([['WASH', '2024-11-01', '200.00']]);
+    const incomes = (await (await request('/api/dossier/2025', profile.id)).json()).incomes;
+    expect(incomes).toMatchObject([{ assetId: 'WASH', type: 'dividend', brokers: ['degiro', 'trade_republic'], count: 2, grossEur: '5.00' }]);
+  });
 });
 
 describe('Inicio: extractos y fin de año', () => {

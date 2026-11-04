@@ -608,6 +608,8 @@ h3 { font-size: 13px; font-weight: 500; color: var(--ink-2); margin: 0 0 6px; }
 .dossier-sales tr.lot td { color: var(--ink-2); font-size: 12.5px; padding-top: 2px; padding-bottom: 2px; }
 .dossier-sales tr.lot td:first-child { padding-left: 16px; }
 .dossier .tag { margin-left: 6px; }
+.dossier tfoot td { font-weight: 600; border-top: 1px solid var(--line); }
+.dossier .mini-table .gap { padding-left: 24px; }
 @media screen and (max-width: 760px) { .dossier-asset { padding: 4px 16px 12px; } .dossier-asset-head { flex-direction: column; } .dossier-asset-head .end { text-align: left; } }
 @media print {
   .dossier { gap: 10px; font-size: 11px; }

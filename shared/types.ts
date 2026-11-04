@@ -153,7 +153,9 @@ export interface YearEndReview { year: number; gppBalanceEur: string; marginalRa
 export interface DossierLot { date: string; broker: string | null; quantity: string; costEur: string; flag: 'falta' | 'posterior' | 'coste0' | null; edited: boolean }
 export interface DossierSale { date: string; broker: string; quantity: string; proceedsEur: string; costEur: string; gainEur: string; edited: boolean; lots: DossierLot[] }
 export interface DossierAsset { assetId: string; assetName: string; section: string; proceedsEur: string; costEur: string; gainEur: string; sales: DossierSale[] }
-export interface DossierIncome { assetId: string; assetName: string; type: Income['type']; broker: string; country: string; count: number; grossEur: string; foreignTaxEur: string; spanishTaxEur: string; netEur: string }
+export interface DossierIncome { assetId: string; assetName: string; type: Income['type']; brokers: string[]; country: string; count: number; grossEur: string; foreignTaxEur: string; spanishTaxEur: string; netEur: string }
+/** Pérdida aplazada de una venta, sumando las compras que consumió. */
+export interface DossierDeferred { assetId: string; assetName: string; saleDate: string; amountEur: string; status: LossTranche['status']; year: number; windowEnd: string }
 export interface DossierNote { date: string | null; text: string }
 
 export const DEFAULT_SETTINGS: Settings = {
