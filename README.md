@@ -43,6 +43,8 @@ En **Inicio**, durante el año en curso, se ve hasta cuándo llegan los datos de
 
 Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá; los saldos a cero se ocultan salvo que actives el interruptor), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
 
+El botón **Mi cartera**, abajo a la derecha, abre un panel que puedes mantener visible mientras usas cualquier sección. Resume tus posiciones actuales de bolsa y cripto con ticker, cantidad y porcentaje de ganancia o pérdida de las unidades que conservas, sumadas entre brókers. Compara su última cotización disponible en euros con su coste FIFO; no incluye ventas ni dividendos. Muestra también el valor actual y el porcentaje total ponderado por coste. Si falta un precio o coste, aparece «—» y se omite el porcentaje total; puedes actualizar los precios desde el panel.
+
 Reimportar un fichero es seguro: lo repetido se ignora y tus ediciones se conservan. Si quitas un documento, sus movimientos duplicados siguen disponibles mientras aparezcan en otro documento que conserves.
 
 El selector de cuenta de la barra lateral permite crear una cuenta para cada persona y cambiar entre ellas. Cada cuenta tiene documentos, movimientos, ajustes, FIFO y marcas de Renta independientes. Los datos existentes quedan en **Mi cuenta**.

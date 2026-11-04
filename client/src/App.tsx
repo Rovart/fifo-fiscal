@@ -4,6 +4,7 @@ import type { Operation } from '../../shared/types.ts';
 import { api, getProfileId, selectProfile, type AppState } from './api.ts';
 import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
+import { HoldingsPanel } from './components/HoldingsPanel.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
 import { Dividends } from './pages/Dividends.tsx';
 import { Dossier } from './pages/Dossier.tsx';
@@ -38,6 +39,8 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ op: Operation | null; prefill?: Partial<Operation> } | null>(null);
+  const [holdingsOpen, setHoldingsOpen] = useState(false);
+  const holdingsButton = useRef<HTMLButtonElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const hadData = useRef(false);
 
@@ -104,7 +107,7 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="layout">
+      <div className={`layout${holdingsOpen ? ' with-holdings' : ''}`}>
         <nav className="side" aria-label="Secciones">
           <div className="brand"><span className="brand-mark">F</span>FIFO Fiscal</div>
           <ProfileSwitcher />
@@ -141,6 +144,10 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
             {page === 'dossier' && <Dossier />}
           </div>
         </main>
+        {holdingsOpen ? <HoldingsPanel onClose={() => {
+          setHoldingsOpen(false);
+          requestAnimationFrame(() => holdingsButton.current?.focus());
+        }} /> : <button ref={holdingsButton} className="btn holdings-toggle no-print" aria-haspopup="dialog" onClick={() => setHoldingsOpen(true)}><Wallet size={18} /> Mi cartera</button>}
         {editor && (
           <OperationEditor
             op={editor.op}

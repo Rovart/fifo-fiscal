@@ -1,4 +1,4 @@
-import type { Asset, Operation, Profile, Settings } from '../../shared/types.ts';
+import type { Asset, Broker, OpenLot, Operation, Position, Profile, Settings } from '../../shared/types.ts';
 
 let profileId = (() => { try { return localStorage.getItem('fifo-profile') || 'default'; } catch { return 'default'; } })();
 export const getProfileId = () => profileId;
@@ -18,6 +18,24 @@ export interface AppState {
   dbPath: string;
   latestRate: string | null;
   counts: { operations: number; byYear: Record<number, { errors: number; warnings: number }>; missingValues: number };
+}
+
+export interface PortfolioQuote {
+  symbol: string | null;
+  currency: string | null;
+  price: string | null;
+  priceEur: string | null;
+  at: string | null;
+  fetchedAt: string | null;
+}
+
+export interface PortfolioData {
+  lots: OpenLot[];
+  positions: Position[];
+  quotes: Record<string, PortfolioQuote>;
+  brokerNames: Record<string, { broker: Broker; name: string }[]>;
+  today: string;
+  balanceDifferences: { assetId: string; declared: string | null; computed: string }[];
 }
 
 export class ApiError extends Error {

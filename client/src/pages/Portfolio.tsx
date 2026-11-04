@@ -1,13 +1,14 @@
 import { ChevronRight, RefreshCw, Wallet } from 'lucide-react';
 import { useState } from 'react';
 import { D } from '../../../shared/decimal.ts';
-import { BROKER_LABEL, type Broker, type DisposalClass, type OpenLot, type Position } from '../../../shared/types.ts';
-import { api, ApiError } from '../api.ts';
+import { BROKER_LABEL, type Broker, type DisposalClass, type Position } from '../../../shared/types.ts';
+import { api, ApiError, type PortfolioData } from '../api.ts';
 import { Callout, Empty, Help, Loading, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, initial, isinOf, niceName, price, qty, signClass, signed, symbol, units } from '../format.ts';
 import { useApi } from '../hooks.ts';
+import { isZeroPosition } from '../holdings.ts';
 
 const GROUPS: { id: DisposalClass; label: string }[] = [
   { id: 'stock', label: 'Acciones' }, { id: 'etf', label: 'ETF' }, { id: 'fund', label: 'Fondos' }, { id: 'crypto', label: 'Criptomonedas' },
@@ -17,11 +18,9 @@ const GROUPS: { id: DisposalClass; label: string }[] = [
 const brokerName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BROKER_LABEL[b as Broker] ?? b);
 const ZERO_KEY = 'cartera-saldos-cero';
 
-interface Quote { symbol: string | null; currency: string | null; price: string | null; priceEur: string | null; at: string | null; fetchedAt: string | null }
-
 export function Portfolio() {
   const { tick, go, changed, toast } = useApp();
-  const { data, reload } = useApi<{ lots: OpenLot[]; positions: Position[]; quotes: Record<string, Quote>; brokerNames: Record<string, { broker: Broker; name: string }[]>; today: string; balanceDifferences: { assetId: string; declared: string | null; computed: string }[] }>('/portfolio', `${tick}`);
+  const { data, reload } = useApi<PortfolioData>('/portfolio', `${tick}`);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
@@ -30,10 +29,7 @@ export function Portfolio() {
   if (!data) return <><PageHead title="Cartera" /><Loading /></>;
   const held = data.positions.filter((p) => D(p.quantity).gt(0));
   // Un saldo que se ve como 0 o que no llega a un céntimo no es una posición que interese ver.
-  const isZero = (p: Position) => {
-    const priceEur = p.class === 'fx' ? null : data.quotes[p.assetId]?.priceEur;
-    return D(p.quantity).toDecimalPlaces(8).isZero() || (D(p.costEur).abs().lt('0.01') && (!priceEur || D(p.quantity).times(D(priceEur)).lt('0.01')));
-  };
+  const isZero = (p: Position) => isZeroPosition(p, data.quotes[p.assetId]);
   const zeroCount = held.filter(isZero).length;
   const positions = showZero ? held : held.filter((p) => !isZero(p));
   const toggleZero = (on: boolean) => { setShowZero(on); try { localStorage.setItem(ZERO_KEY, on ? '1' : '0'); } catch { /* Solo para esta visita. */ } };
