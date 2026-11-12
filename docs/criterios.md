@@ -121,6 +121,26 @@ Una sentencia del TSJ del País Vasco de 9 de enero de 2025 [rechaza el FIFO en 
 - **Pagos con cripto.** `Card Spend`, `Donation` y similares cuentan como venta y se marcan para revisar.
 - **Internos.** Los traspasos a Pro, a Exchange o a staking no tienen efecto.
 
+## Kraken y Coinbase por API
+
+- **Qué se pide.** Solo lectura: el ledger de Kraken (`Ledgers`, firmado con HMAC-SHA512) y los movimientos de cada cuenta de Coinbase (API v2 con un JWT de la CDP por petición). Nada que pueda operar ni retirar.
+- **Cómo se trata.** Los movimientos se escriben con las columnas del CSV de cada exchange y pasan por su mismo importador: mismas reglas, mismos identificadores y ningún duplicado con lo ya subido.
+- **Desde cuándo.** Desde el último movimiento de ese exchange, con dos días de margen. La primera vez sin extractos, todo el historial; en Kraken puede tardar minutos por su límite de consultas.
+- **Coinbase.** Una ejecución de Advanced Trade aparece en las dos cuentas del par: se toma la del activo comprado o vendido, con su comisión pasada a la moneda del valor. Una conversión une sus dos partes.
+- **Valor.** La API de Kraken no trae el importe en dólares de cada línea: se valora con el precio público de Kraken, como un ledger antiguo.
+
+## Wallets de Ethereum
+
+- **Qué se lee.** Solo la dirección pública, en la API abierta de [Blockscout](https://eth.blockscout.com): transferencias de tokens, transacciones y transacciones internas de la red principal.
+- **Qué es una permuta.** Una transacción en la que del wallet sale un único activo y entra otro distinto, la envíe el propio wallet o un tercero (agregadores con firma). No depende del DEX. Incluye el staking líquido (ETH → stETH) y los depósitos que devuelven otro token: si no los consideras permuta, desmárcalos. Envíos, recepciones, transacciones fallidas, NFT y operaciones con más de dos monedas (liquidez) no se importan; las dos últimas se cuentan en un aviso.
+- **WETH** es ETH: envolverlo o desenvolverlo no es una permuta.
+- **Activo.** El FIFO va por símbolo, para unirse con lo comprado en los exchanges. Un token que usa el símbolo de ETH, BTC, una moneda fiat o una stablecoin sin ser su contrato oficial lleva su contrato en el identificador, no se mezcla con el auténtico y se marca para revisar.
+- **Valor.** Si una parte es USDC, USDT o DAI (contrato oficial), 1 USD por unidad al cambio del BCE. Si no, el precio de Kraken de lo entregado o, si no lo cotiza, de lo recibido. Sin precio, se pide a mano.
+- **Gas.** Es un gasto inherente a la permuta y reduce su valor de transmisión, al cierre diario del ETH en euros (Yahoo). Las unidades de ETH gastadas en gas, en permutas o en cualquier otra transacción, no se descuentan del saldo: el ETH «Fuera de los brókers» puede quedar algo por encima del real.
+- **Dónde está.** El wallet es la cartera propia adonde llegan las retiradas de los exchanges («Fuera de los brókers»): lo permutado sale de ahí y lo recibido se queda ahí. No entra en el modelo 721.
+- **stETH y similares.** El saldo que crece solo (rebase) no genera transferencias: esas recompensas no se importan.
+- **Desmarcar** una permuta la deja fuera del cálculo como un movimiento eliminado, recuperable.
+
 ## Desempeño
 
 Responde a «cuánto he ganado de verdad», antes de impuestos, y no sigue las reglas fiscales:
@@ -134,6 +154,7 @@ Resultado del año = lo vendido + dividendos e intereses − gastos + cambio en 
 - **Sin coste conocido**: lo vendido sin compra no cuenta como ganancia, y se indica cuánto es.
 - **Sin precio**: el activo cuenta a su coste, sin ganar ni perder, y se avisa.
 - **Precios**: cierres mensuales de Yahoo, deshaciendo sus ajustes por splits, pasados a euros al cambio del BCE de fin de mes. El año en curso usa la cotización de hoy.
+- **Ganado en la gráfica**: lo vendido, las rentas y los gastos acumulados hasta cada mes, más lo que se ganaría vendiendo ese mes. El último mes coincide con el resultado total.
 - **Rentabilidad**: Dietz modificado, el resultado sobre el valor inicial más lo aportado según el tiempo que estuvo invertido. Si por muchas compras y ventas ese capital baja de un 25 % de la media invertida, se usa la media. El total encadena los años.
 
 Comprobado contra el método directo (valor final − inicial − aportado + rentas − gastos): coincide al céntimo, salvo el staking, que entra como valor y como renta, y los gastos de margen pagados en cripto.
@@ -146,7 +167,7 @@ Tampoco se arrastra si lo vendido llegó de fuera por un depósito y ya se vendi
 
 ## Precios actuales
 
-Cartera y «¿Y si vendo?» usan precios de Yahoo Finance mediante la librería `yahoo-finance2`, solo cuando se pide. El símbolo se busca por ISIN, dando preferencia a la bolsa del país del ISIN; si Yahoo no lo conoce, por nombre. El símbolo usado se ve al desplegar cada valor. Las criptomonedas que Yahoo no tiene usan el último precio de Kraken. Son orientativos, no valores fiscales, y no incluyen comisiones de venta.
+Cartera y «¿Y si vendo?» usan precios de Yahoo Finance mediante la librería `yahoo-finance2`, solo cuando se pide. El símbolo se busca por ISIN, dando preferencia a la bolsa del país del ISIN; si Yahoo no lo conoce, por nombre. El símbolo usado se ve al desplegar cada valor. Una criptomoneda que Yahoo solo cotiza en dólares, como stETH, se pasa a euros al cambio del BCE; las que Yahoo no tiene usan el último precio de Kraken. Son orientativos, no valores fiscales, y no incluyen comisiones de venta.
 
 ## Modelos 720 y 721
 
@@ -158,6 +179,7 @@ Se muestra la posición a 31 de diciembre con su coste y un aviso si supera 50.0
   - DEGIRO: probado con una exportación real en español. Otros idiomas o formatos se basan en ejemplos públicos. Los conceptos de `Account` se reconocen por texto y lo que no reconoce se avisa.
   - Trade Republic: probado con una exportación real. El significado de las columnas de impuestos se ha deducido de los datos.
   - Kraken: probado con un ledger real con columnas en dólares. Sus saldos calculados coinciden con los del fichero.
+  - Wallets de Ethereum: probado con un wallet real con una permuta en un agregador y un depósito en Lido.
   - Coinbase y cripto de Revolut: columnas tomadas del proyecto abierto [BittyTax](https://github.com/BittyTax/BittyTax), sin un fichero real.
   - Acciones de Revolut: columnas de memoria, sin confirmar en ninguna fuente pública ni con un fichero real. Si cambian, el fichero se rechaza con un aviso.
 - **No se calcula sola**: resultados de margen en euros, futuros, derivados, escisiones y canjes con efectivo. Se avisa y se añaden a mano.

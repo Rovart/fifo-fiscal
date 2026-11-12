@@ -14,10 +14,23 @@ fail() {
   exit 1
 }
 ready() { curl --fail --silent --max-time 2 "$FIFO_URL/api/health" 2>/dev/null | grep -q 'fifo-fiscal'; }
+# Un servidor arrancado antes de actualizar el código sigue ejecutando el anterior.
+stale() {
+  FIFO_STARTED=$(curl --fail --silent --max-time 2 "$FIFO_URL/api/health" 2>/dev/null | sed -n 's/.*"started":\([0-9][0-9]*\).*/\1/p')
+  [ -z "$FIFO_STARTED" ] || [ -n "$(find server shared package.json -newermt "@$FIFO_STARTED" -print -quit 2>/dev/null)" ]
+}
+stop_server() {
+  FIFO_OLD=$(ss -ltnpH "sport = :$PORT" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)
+  [ -n "$FIFO_OLD" ] && grep -aq 'server/index.ts' "/proc/$FIFO_OLD/cmdline" 2>/dev/null || return 0
+  kill "$FIFO_OLD" 2>/dev/null || return 0
+  FIFO_TRIES=0
+  while kill -0 "$FIFO_OLD" 2>/dev/null && [ "$FIFO_TRIES" -lt 40 ]; do FIFO_TRIES=$((FIFO_TRIES + 1)); sleep 0.25; done
+}
 
 # El cierre del descriptor en el servidor libera el bloqueo del lanzador.
 exec 9>data/launcher.lock
 flock -x 9
+if ready && stale; then stop_server; fi
 if ! ready; then
   command -v node >/dev/null 2>&1 || fail
   npm run build >>"$FIFO_LOG" 2>&1 || fail

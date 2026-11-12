@@ -76,6 +76,13 @@ describe('Desempeño', () => {
     expect(p.months.at(-1)).toMatchObject({ month: '2026-03', valueEur: '660.00', costEur: '600.00' });
     expect(p.months.some((m) => m.month === '2025-06' && m.costEur === '600.00')).toBe(true);
   });
+  it('lo ganado de cada mes suma lo vendido y lo que se ganaría vendiendo, y acaba en el resultado total', () => {
+    // Diciembre de 2024: nada vendido, 10 a 120 frente a 100 de coste.
+    expect(p.months.find((m) => m.month === '2024-12')?.gainedEur).toBe('200.00');
+    // Diciembre de 2025: 200 de la venta más 6 × (130 − 100).
+    expect(p.months.find((m) => m.month === '2025-12')?.gainedEur).toBe('380.00');
+    expect(p.months.at(-1)?.gainedEur).toBe(p.totalResultEur);
+  });
   it('sin pedirlo no calcula los cierres mensuales', () => {
     const r = runEngine({ ops, assets: ASSETS, settings: DEFAULT_SETTINGS, rateAt: () => null, today: '2026-03-15' });
     expect(r.monthly).toBeUndefined();

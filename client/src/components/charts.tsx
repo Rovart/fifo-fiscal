@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { compactEur, compactSigned, eur, monthShort, signed } from '../format.ts';
 
 /** Un solo aviso flotante por gráfica. Solo amplía: cada valor se puede leer también en la tabla. */
@@ -70,14 +70,16 @@ const niceStep = (max: number, count: number) => {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
 };
 
-export interface ValuePoint { month: string; value: number; cost: number }
+export interface ValuePoint { month: string; value: number; cost: number; gained?: number }
 
-/** Lo que vale la cartera frente a lo que costó: la distancia entre las líneas es lo que se ganaría o perdería. */
+/** Lo que vale la cartera frente a lo que costó, y lo ganado hasta cada mes: verde sobre cero, rojo por debajo. */
 export function ValueChart({ points }: { points: ValuePoint[] }) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [active, setActive] = useState<number | null>(null);
   const { node, show, hide } = useTip();
+  const clip = useId().replace(/:/g, '');
+  const gains = points.some((p) => p.gained !== undefined);
   useEffect(() => {
     if (!box.current) return;
     const ro = new ResizeObserver(([e]) => { if (e) setWidth(Math.max(240, e.contentRect.width)); });
@@ -85,15 +87,18 @@ export function ValueChart({ points }: { points: ValuePoint[] }) {
     return () => ro.disconnect();
   }, []);
   const H = 240, L = 52, R = 12, T = 12, B = 26;
-  const max = Math.max(1, ...points.flatMap((p) => [p.value, p.cost]));
-  const step = niceStep(max, 4);
-  const top = Math.ceil(max / step) * step;
-  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  const max = Math.max(1, ...points.flatMap((p) => [p.value, p.cost, p.gained ?? 0]));
+  // Lo ganado puede ser negativo: entonces el eje baja de cero, salvo que la pérdida no se vea a esta escala.
+  const lowest = Math.min(0, ...points.map((p) => p.gained ?? 0));
+  const min = -lowest > max * 0.02 ? lowest : 0;
+  const step = niceStep(max - min, 4);
+  const top = Math.ceil(max / step) * step, bottom = Math.floor(min / step) * step;
+  const ticks = Array.from({ length: Math.round((top - bottom) / step) + 1 }, (_, i) => bottom + i * step);
   const n = points.length;
   const x = (i: number) => L + (n > 1 ? (i / (n - 1)) * (width - L - R) : 0);
-  const y = (v: number) => T + (1 - v / top) * (H - T - B);
-  const line = (key: 'value' | 'cost') => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p[key]).toFixed(1)}`).join(' ');
-  const area = n ? `${line('value')} L${x(n - 1).toFixed(1)} ${y(0)} L${x(0).toFixed(1)} ${y(0)} Z` : '';
+  const y = (v: number) => T + (1 - (v - bottom) / (top - bottom)) * (H - T - B);
+  const line = (key: 'value' | 'cost' | 'gained') => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p[key] ?? 0).toFixed(1)}`).join(' ');
+  const area = n ? `${line('value')} L${x(n - 1).toFixed(1)} ${y(0).toFixed(1)} L${x(0).toFixed(1)} ${y(0).toFixed(1)} Z` : '';
   // Con varios años, una marca en cada enero; con uno, cada dos o tres meses.
   const labels = useMemo(() => {
     const room = Math.max(1, Math.floor((width - L - R) / 62));
@@ -110,7 +115,8 @@ export function ValueChart({ points }: { points: ValuePoint[] }) {
         <div className="tip-head">{monthShort(p.month)}</div>
         <TipRow label="Vale" value={eur(p.value.toFixed(2))} color="var(--accent)" />
         <TipRow label="Te costó" value={eur(p.cost.toFixed(2))} color="var(--ink-3)" />
-        <TipRow label="Diferencia" value={signed(diff.toFixed(2))} />
+        <TipRow label="Sin realizar" value={signed(diff.toFixed(2))} />
+        {p.gained !== undefined && <TipRow label="Ganado" value={signed(p.gained.toFixed(2))} color={p.gained < 0 ? 'var(--loss)' : 'var(--gain)'} />}
       </>
     );
   };
@@ -133,7 +139,7 @@ export function ValueChart({ points }: { points: ValuePoint[] }) {
       ref={box}
       tabIndex={0}
       role="img"
-      aria-label={last ? `Valor de la cartera por meses. En ${monthShort(last.month)} vale ${eur(last.value.toFixed(2))} y te costó ${eur(last.cost.toFixed(2))}.` : 'Sin datos'}
+      aria-label={last ? `Valor de la cartera por meses. En ${monthShort(last.month)} vale ${eur(last.value.toFixed(2))} y te costó ${eur(last.cost.toFixed(2))}${last.gained !== undefined ? `; llevas ganado ${signed(last.gained.toFixed(2))}` : ''}.` : 'Sin datos'}
       onPointerMove={onMove}
       onPointerLeave={() => at(null)}
       onBlur={() => at(null)}
@@ -157,11 +163,23 @@ export function ValueChart({ points }: { points: ValuePoint[] }) {
         <path d={area} className="vchart-area" />
         <path d={line('cost')} className="vchart-cost" />
         <path d={line('value')} className="vchart-value" />
+        {gains && (
+          <>
+            <defs>
+              <clipPath id={`${clip}-up`}><rect x={0} y={0} width={width} height={y(0)} /></clipPath>
+              <clipPath id={`${clip}-down`}><rect x={0} y={y(0)} width={width} height={H} /></clipPath>
+            </defs>
+            {bottom < 0 && <line className="vchart-zero" x1={L} x2={width - R} y1={y(0)} y2={y(0)} />}
+            <path d={line('gained')} className="vchart-gained gain" clipPath={`url(#${clip}-up)`} />
+            <path d={line('gained')} className="vchart-gained loss" clipPath={`url(#${clip}-down)`} />
+          </>
+        )}
         {active !== null && points[active] && (
           <g>
             <line className="vchart-cross" x1={x(active)} x2={x(active)} y1={T} y2={H - B} />
             <circle className="vchart-dot cost" cx={x(active)} cy={y(points[active].cost)} r={4} />
             <circle className="vchart-dot" cx={x(active)} cy={y(points[active].value)} r={4} />
+            {points[active].gained !== undefined && <circle className={`vchart-dot gained ${points[active].gained! < 0 ? 'loss' : 'gain'}`} cx={x(active)} cy={y(points[active].gained!)} r={4} />}
           </g>
         )}
         {active === null && last && <circle className="vchart-dot" cx={x(n - 1)} cy={y(last.value)} r={4} />}

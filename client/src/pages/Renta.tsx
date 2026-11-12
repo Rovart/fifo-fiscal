@@ -6,6 +6,7 @@ import { BlockingBuys, groupLosses } from '../components/DeferredLoss.tsx';
 import { BROKER_LABEL, type Broker, type ForeignFiling, type ForeignForm, type ForeignFormReport, type ForeignReport } from '../../../shared/types.ts';
 import { api } from '../api.ts';
 import { Callout, CopyValue, Disclosure, Empty, Help, LoadError, Loading, NumField, PageHead } from '../components/ui.tsx';
+import { Rolling, Stamp } from '../components/motion.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, isinOf, niceName, qty, signClass, signed } from '../format.ts';
@@ -164,9 +165,10 @@ export function Renta() {
           <div className="stat-grid">
             <div className="stat-card">
               <div className="l">A pagar, aproximado <Help text={HELP.apagar} /></div>
-              <div className="v">{eur(rep.savings.taxAfterCredits)}</div>
+              <div className="v"><Rolling value={eur(rep.savings.taxAfterCredits)} /></div>
             </div>
-            <div className="stat-card">
+            <div className="stat-card stamp-card">
+              {allIds.length > 0 && doneCount === allIds.length && <Stamp top="Copiado" bottom={`Renta ${year}`} />}
               <div className="l">Copiado a Renta Web</div>
               <div className="v">{doneCount} de {allIds.length}</div>
               <div className="progress no-print" style={{ marginTop: 8 }}><div style={{ transform: `scaleX(${allIds.length ? doneCount / allIds.length : 0})` }} /></div>

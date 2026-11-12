@@ -1,12 +1,12 @@
-import { ChevronRight, RefreshCw, Wallet } from 'lucide-react';
+import { ArrowDownUp, ChevronRight, RefreshCw, Wallet } from 'lucide-react';
 import { useState } from 'react';
-import { D } from '../../../shared/decimal.ts';
+import { D, type Decimal } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type DisposalClass, type Position } from '../../../shared/types.ts';
 import { api, ApiError, type PortfolioData } from '../api.ts';
-import { Callout, Empty, Help, LoadError, Loading, PageHead } from '../components/ui.tsx';
+import { Callout, Empty, Help, LoadError, Loading, Menu, PageHead } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
-import { dateShort, eur, initial, isinOf, niceName, price, qty, signClass, signed, symbol, units } from '../format.ts';
+import { dateShort, eur, isinOf, niceName, percent, price, qty, signClass, signed, symbol, units } from '../format.ts';
 import { useApi } from '../hooks.ts';
 import { isZeroPosition } from '../holdings.ts';
 
@@ -17,6 +17,9 @@ const GROUPS: { id: DisposalClass; label: string }[] = [
 
 const brokerName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BROKER_LABEL[b as Broker] ?? b);
 const ZERO_KEY = 'cartera-saldos-cero';
+const SORT_KEY = 'cartera-orden';
+const SORTS = { value: 'Valor', gain: 'Mayor ganancia', loss: 'Mayor pérdida', percent: 'Rentabilidad', name: 'Nombre' } as const;
+type Sort = keyof typeof SORTS;
 
 export function Portfolio() {
   const { tick, go, changed, toast } = useApp();
@@ -26,6 +29,7 @@ export function Portfolio() {
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showZero, setShowZero] = useState(() => { try { return localStorage.getItem(ZERO_KEY) === '1'; } catch { return false; } });
+  const [sort, setSort] = useState<Sort>(() => { try { const s = localStorage.getItem(SORT_KEY); return s && s in SORTS ? s as Sort : 'value'; } catch { return 'value'; } });
   if (!data) return <><PageHead title="Cartera" />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
   const held = data.positions.filter((p) => D(p.quantity).gt(0));
   // Un saldo que se ve como 0 o que no llega a un céntimo no es una posición que interese ver.
@@ -33,6 +37,7 @@ export function Portfolio() {
   const zeroCount = held.filter(isZero).length;
   const positions = showZero ? held : held.filter((p) => !isZero(p));
   const toggleZero = (on: boolean) => { setShowZero(on); try { localStorage.setItem(ZERO_KEY, on ? '1' : '0'); } catch { /* Solo para esta visita. */ } };
+  const changeSort = (s: Sort) => { setSort(s); try { localStorage.setItem(SORT_KEY, s); } catch { /* Solo para esta visita. */ } };
   if (held.length === 0) {
     return (
       <>
@@ -65,6 +70,24 @@ export function Portfolio() {
   const fetched = Object.values(data.quotes).map((q) => q.fetchedAt).filter(Boolean).sort().pop();
   const twoMonthsAgo = (() => { const d = new Date(`${data.today}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 2); return d.toISOString().slice(0, 10); })();
   const noPrice = positions.filter((p) => p.class !== 'fx' && !valueOf(p)).length;
+  // Lo que no tiene precio va al final; sin precio, el valor se ordena por coste.
+  const metric = (p: Position): Decimal | null => {
+    const v = valueOf(p), cost = D(p.costEur);
+    if (sort === 'value') return v;
+    if (!v) return null;
+    if (sort === 'gain') return v.minus(cost);
+    if (sort === 'loss') return cost.minus(v);
+    return cost.gt(0) ? v.minus(cost).div(cost) : null;
+  };
+  const compare = (a: Position, b: Position) => {
+    if (sort !== 'name') {
+      const ma = metric(a), mb = metric(b);
+      if (ma && mb && !ma.eq(mb)) return mb.comparedTo(ma);
+      if (!ma !== !mb) return ma ? -1 : 1;
+      if (!ma && sort === 'value' && !D(a.costEur).eq(D(b.costEur))) return D(b.costEur).comparedTo(D(a.costEur));
+    }
+    return niceName(a.assetName).localeCompare(niceName(b.assetName), 'es');
+  };
 
   return (
     <>
@@ -75,12 +98,24 @@ export function Portfolio() {
             <input type="checkbox" role="switch" className="switch" checked={showZero} onChange={(e) => toggleZero(e.target.checked)} />
           </label>
         )}
+        <Menu
+          className="btn quiet"
+          ariaLabel={`Ordenar por ${SORTS[sort].toLowerCase()}`}
+          label={<><ArrowDownUp size={15} aria-hidden="true" />{SORTS[sort]}</>}
+          items={(Object.keys(SORTS) as Sort[]).map((id) => ({ label: SORTS[id], checked: sort === id, onSelect: () => changeSort(id) }))}
+        />
         <button className="btn" disabled={busy} onClick={() => void refresh()}><RefreshCw size={15} /> {busy ? 'Buscando…' : fetched ? 'Actualizar precios' : 'Ver precios actuales'}</button>
       </PageHead>
       {positions.length === 0 && <div className="card"><Empty icon={Wallet} title="Solo quedan saldos a cero" /></div>}
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
       {missing.length > 0 && <Callout tone="warn">Sin precio: {missing.map(niceName).join(', ')}.</Callout>}
-      {data.balanceDifferences.length > 0 && <Callout tone="warn">{data.balanceDifferences.map((p) => `${p.assetId}: ${qty(p.declared)} declarados · ${qty(p.computed)} en extractos`).join('. ')}. <button className="link" onClick={() => go('review')}>Conciliar saldo</button></Callout>}
+      {data.balanceDifferences.length > 0 && (
+        <Callout tone="warn">
+          No cuadra lo que tienes fuera de los brókers.{' '}
+          {data.balanceDifferences.map((p) => `${niceName(p.assetName)}: según tus movimientos tienes ${qty(p.computed)}, pero${p.asOf ? ` el ${dateShort(p.asOf)}` : ''} anotaste como saldo real ${qty(p.declared)}.`).join(' ')}{' '}
+          <button className="link" onClick={() => go('review')}>Revisar el saldo</button>
+        </Callout>
+      )}
       <div className="stat-grid">
         <div className="stat-card">
           <div className="l">Te ha costado <Help text={HELP.coste} /></div>
@@ -101,11 +136,7 @@ export function Portfolio() {
         )}
       </div>
       {GROUPS.map((g) => {
-        const rows = positions.filter((p) => p.class === g.id).sort((a, b) => {
-          const la = valueOf(a), lb = valueOf(b);
-          if (!la || !lb) return la ? -1 : lb ? 1 : a.assetName.localeCompare(b.assetName);
-          return la.minus(D(a.costEur)).minus(lb.minus(D(b.costEur))).toNumber();
-        });
+        const rows = positions.filter((p) => p.class === g.id).sort(compare);
         if (rows.length === 0) return null;
         return (
           <div className="card flush" key={g.id}>
@@ -117,11 +148,11 @@ export function Portfolio() {
                 const q = quote(p);
                 const val = valueOf(p);
                 const res = val ? val.minus(D(p.costEur)).toFixed(2) : null;
+                const pct = val && D(p.costEur).gt(0) ? val.minus(D(p.costEur)).div(D(p.costEur)).times(100).toFixed() : null;
                 const hasRecent = lots.some((l) => l.acqDate.slice(0, 10) >= twoMonthsAgo);
                 return (
                   <div key={p.assetId}>
                     <button className="item tap" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : p.assetId)}>
-                      <div className="avatar">{initial(p.assetName)}</div>
                       <div className="main-col">
                         <div className="title">{niceName(p.assetName)}</div>
                         <div className="sub">{units(p.quantity, p.class, p.assetId)} · {Object.keys(p.byBroker).filter((b) => D(p.byBroker[b]).gt(0)).map(brokerName).join(', ')}</div>
@@ -129,7 +160,7 @@ export function Portfolio() {
                       </div>
                       <div className="end">
                         {res ? <div className={`amount ${signClass(res)}`}>{signed(res)}</div> : <div className="amount">{eur(D(p.costEur).toFixed(2))}</div>}
-                        <div className="sub">{res ? `vale ${eur((val as ReturnType<typeof D>).toFixed(2))}` : g.id === 'fx' ? 'coste' : 'sin precio'}</div>
+                        <div className="sub">{res ? `vale ${eur((val as ReturnType<typeof D>).toFixed(2))}${pct ? ` · ${percent(pct)}` : ''}` : g.id === 'fx' ? 'coste' : 'sin precio'}</div>
                       </div>
                       <ChevronRight size={16} className={`chevron ${isOpen ? 'open' : ''}`} />
                     </button>

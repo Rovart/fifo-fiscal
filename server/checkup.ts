@@ -17,7 +17,7 @@ const monthsBack = (date: string, months: number) => {
 export function brokerFreshness(): BrokerFreshness[] {
   const now = today();
   const rows = db.prepare(`SELECT o.broker, MAX(o.datetime) AS last_op, (SELECT MAX(i.at) FROM imports i WHERE i.broker = o.broker) AS last_import
-    FROM operations o WHERE o.deleted = 0 AND o.broker NOT IN ('manual', 'cointracking') GROUP BY o.broker`).all() as { broker: Broker; last_op: string; last_import: string | null }[];
+    FROM operations o WHERE o.deleted = 0 AND o.broker NOT IN ('manual', 'cointracking', 'ethereum') GROUP BY o.broker`).all() as { broker: Broker; last_op: string; last_import: string | null }[];
   const positions = engine().positions;
   return rows.map((r) => {
     const upTo = [r.last_op.slice(0, 10), r.last_import?.slice(0, 10) ?? ''].sort().at(-1)!;

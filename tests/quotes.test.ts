@@ -38,4 +38,11 @@ describe('Identificación y precios por bolsa', () => {
     await refreshQuotes();
     expect(storedQuotes()['TEST.L']).toMatchObject({ currency: 'GBP', price: '8', priceEur: '10.00000000' });
   });
+  it('una cripto que Yahoo solo cotiza en dólares, como stETH, se pasa a euros al cambio del BCE', async () => {
+    insertRates([{ date: '2026-11-03', currency: 'USD', rate: '1.25' }]);
+    mocks.engine.mockReturnValue({ positions: [{ assetId: 'STETH', assetName: 'Lido Staked ETH', class: 'crypto', quantity: '1' }] });
+    mocks.quote.mockImplementation(async (symbol) => symbol === 'STETH-USD' ? { regularMarketPrice: 2500, currency: 'USD' } : undefined);
+    await refreshQuotes();
+    expect(storedQuotes().STETH).toMatchObject({ symbol: 'STETH-USD', priceEur: '2000.00000000' });
+  });
 });

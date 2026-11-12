@@ -178,6 +178,9 @@ export function marketOf(code: string): Market {
 
 export const isFiat = (s: string): boolean => ['EUR', 'USD', 'GBP', 'CHF', 'CAD', 'AUD', 'JPY', 'SEK', 'NOK', 'DKK', 'GBX', 'HKD'].includes(s);
 
+/** Stablecoins en dólares: valoran una permuta a 1 USD por unidad. */
+export const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'TUSD', 'USDP', 'PAX', 'DAI', 'GUSD']);
+
 export const addCount = (m: Record<string, number>, k: string) => { m[k] = (m[k] ?? 0) + 1; };
 
 export { isNum };

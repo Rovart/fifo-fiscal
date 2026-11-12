@@ -303,7 +303,7 @@ export function commitImport(file: string, text: string) {
   }
 }
 
-function registerAsset(assets: Map<string, Asset>, id: string, name: string, klass: AssetClass, market?: Market) {
+export function registerAsset(assets: Map<string, Asset>, id: string, name: string, klass: AssetClass, market?: Market) {
   if (!id) return;
   const prev = assets.get(id);
   if (prev) {
@@ -629,10 +629,10 @@ export async function resolveCryptoValues(limit = 40) {
 }
 
 const unpriced = new Set<string>();
-/** CoinTracking no trae euros en las permutas entre criptos: se valoran todas, también las de ciclos anteriores. */
+/** CoinTracking y los wallets no traen euros en las permutas entre criptos: se valoran todas, también las de ciclos anteriores. */
 export async function valueImportedCrypto(): Promise<number> {
   let done = 0;
-  for (const op of allOps().filter((o) => o.broker === 'cointracking' && missingValue(o) && !o.edited && !unpriced.has(`${currentProfileId()}:${o.id}`))) {
+  for (const op of allOps().filter((o) => (o.broker === 'cointracking' || o.broker === 'ethereum') && missingValue(o) && !o.edited && !unpriced.has(`${currentProfileId()}:${o.id}`))) {
     if (await valueFromKraken(op)) done++;
     else unpriced.add(`${currentProfileId()}:${op.id}`);
   }

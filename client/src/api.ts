@@ -35,7 +35,7 @@ export interface PortfolioData {
   quotes: Record<string, PortfolioQuote>;
   brokerNames: Record<string, { broker: Broker; name: string }[]>;
   today: string;
-  balanceDifferences: { assetId: string; declared: string | null; computed: string }[];
+  balanceDifferences: { assetId: string; assetName: string; declared: string | null; computed: string; asOf: string | null }[];
 }
 
 export class ApiError extends Error {
@@ -49,6 +49,8 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
     headers: { 'X-Fifo-Profile': opts.profileId ?? profileId, ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
+  // Un servidor arrancado antes de actualizar no conoce las rutas nuevas y responde con la página.
+  if (!res.headers.get('content-type')?.includes('json')) throw new ApiError('FIFO Fiscal se ha actualizado y sigue abierta la versión anterior. Ciérrala y vuelve a abrirla.');
   const data = (await res.json().catch(() => ({}))) as { error?: string; detail?: unknown };
   if (!res.ok) throw new ApiError(data.error ?? `Error ${res.status}`, data.detail);
   return data as T;

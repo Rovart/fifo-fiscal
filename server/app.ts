@@ -17,6 +17,8 @@ import { foreignReport } from './foreign.ts';
 import { performance, refreshPriceHistory } from './history.ts';
 import { refreshQuotes, storedQuotes } from './quotes.ts';
 import { resolutionRunning, scheduleResolution } from './resolution.ts';
+import { includeSwaps, listWallets, syncWallet } from './wallet.ts';
+import { ExchangeApiError, assertBroker, connectExchange, disconnectExchange, listConnections, startSync, type ApiCredentials } from './exchange-api.ts';
 import {
   ValidationError, assetsMap, brokerNames, calculationOps, checks, commitImport, confirmReview, countMissingValues, createOp, deleteOp, engine, pendingByYear, previewImport, priceEur, refreshEcbRates, report, resolveCryptoValues,
   listImports, removeBrokerImports, restoreDeleted, restoreOriginal, setAssetIsin, setDeclaredBalance, simulateSales, today, undoImport, updateOp, withAssetMeta,
@@ -40,12 +42,15 @@ app.onError((err, c) => {
   if (err instanceof ProfileError) return c.json({ error: err.message }, 422);
   if (err instanceof BackupError) return c.json({ error: err.message }, 422);
   if (err instanceof ValidationError) return c.json({ error: err.message, detail: err.detail }, 422);
+  if (err instanceof ExchangeApiError) return c.json({ error: err.message }, 422);
   console.error(err);
   return c.json({ error: err.message }, 500);
 });
 
 app.get('/api/profiles', (c) => c.json(listProfiles()));
-app.get('/api/health', (c) => c.json({ app: 'fifo-fiscal' }));
+// El lanzador compara `started` con la fecha del código para reiniciar un servidor anterior a una actualización.
+const started = Math.floor(Date.now() / 1000);
+app.get('/api/health', (c) => c.json({ app: 'fifo-fiscal', started }));
 app.post('/api/profiles', async (c) => c.json(createProfile((await c.req.json()).name), 201));
 app.put('/api/profiles/:id', async (c) => c.json(renameProfile(c.req.param('id'), (await c.req.json()).name)));
 
@@ -149,6 +154,34 @@ app.get('/api/imports', (c) => c.json(listImports()));
 app.delete('/api/imports/:id', (c) => c.json({ removed: undoImport(c.req.param('id')) }));
 app.delete('/api/imports/broker/:broker', (c) => c.json({ removed: removeBrokerImports(c.req.param('broker')) }));
 
+app.get('/api/wallets', (c) => c.json(listWallets()));
+app.post('/api/wallets', async (c) => {
+  const { address } = (await c.req.json()) as { address: string };
+  try {
+    const result = await syncWallet(address);
+    scheduleResolution(true);
+    return c.json(result);
+  } catch (e) {
+    if (e instanceof ValidationError) throw e;
+    return c.json({ error: (e as Error).message }, 502);
+  }
+});
+// API de solo lectura de Kraken y Coinbase: la lectura sigue en segundo plano y el navegador consulta su estado.
+const syncInBackground = (broker: ReturnType<typeof assertBroker>) => { void startSync(broker, undefined, (r) => { if (r.added) scheduleResolution(true); }); };
+app.get('/api/exchange-apis', (c) => c.json(listConnections()));
+app.put('/api/exchange-apis/:broker', async (c) => {
+  const broker = assertBroker(c.req.param('broker'));
+  await connectExchange(broker, (await c.req.json()) as ApiCredentials);
+  syncInBackground(broker);
+  return c.json(listConnections());
+});
+app.delete('/api/exchange-apis/:broker', (c) => { disconnectExchange(assertBroker(c.req.param('broker'))); return c.json(listConnections()); });
+app.post('/api/exchange-apis/:broker/sync', (c) => { syncInBackground(assertBroker(c.req.param('broker'))); return c.json(listConnections()); });
+app.post('/api/wallets/swaps', async (c) => {
+  const b = (await c.req.json()) as { ids: string[]; included: boolean };
+  return c.json({ changed: includeSwaps(b.ids, b.included) });
+});
+
 app.get('/api/report/:year', (c) => c.json(report(Number(c.req.param('year')))));
 app.get('/api/disposals', (c) => {
   const y = Number(c.req.query('year'));
@@ -249,3 +282,6 @@ app.get('/api/export/:year', async (c) => {
     },
   });
 });
+
+// Una ruta que no existe responde como API, no con la página: así la interfaz puede explicarlo.
+app.all('/api/*', (c) => c.json({ error: 'No encontrado' }, 404));

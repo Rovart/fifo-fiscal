@@ -1,6 +1,6 @@
 # FIFO Fiscal
 
-Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Consulta automáticamente tipos del BCE, cotizaciones e históricos públicos, identificadores y repartos publicados para completar las importaciones. A los proveedores solo se envían identificadores y símbolos públicos, nunca nombres de personas, documentos, cantidades ni importes de la cartera.
+Calcula el FIFO y prepara el IRPF de bolsa y criptomonedas según los criterios de la AEAT y la DGT, con DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking. Funciona solo en tu equipo: los datos se guardan en `data/fifo.db` y el servidor únicamente acepta conexiones locales. Consulta automáticamente tipos del BCE, cotizaciones e históricos públicos, identificadores y repartos publicados para completar las importaciones. A los proveedores solo se envían identificadores y símbolos públicos, nunca nombres de personas, documentos, cantidades ni importes de la cartera. Si añades un wallet, su dirección pública se consulta en Blockscout.
 
 > Es un apoyo de cálculo, no asesoramiento fiscal. Revisa el resultado en Renta Web. Los criterios y sus fuentes están en [docs/criterios.md](docs/criterios.md).
 
@@ -17,7 +17,7 @@ npm start
 
 Se abre en <http://127.0.0.1:5199>. Para desarrollar, `npm run dev`. Para las pruebas, `npm test`.
 
-En Linux, ejecuta `./linux/install-shortcut` una vez para añadir **FIFO Fiscal** al escritorio y al menú. El acceso directo arranca el servidor si hace falta y abre el navegador; volver a pulsarlo reutiliza el servidor. Los registros de arranque quedan en `data/server.log`.
+En Linux, ejecuta `./linux/install-shortcut` una vez para añadir **FIFO Fiscal** al escritorio y al menú. El acceso directo arranca el servidor si hace falta y abre el navegador; volver a pulsarlo reutiliza el servidor, o lo reinicia si el código se ha actualizado desde que arrancó. Si la interfaz detecta que sigue abierta una versión anterior, pide cerrarla y volver a abrirla. Los registros de arranque quedan en `data/server.log`.
 
 Cada persona tiene sus propios datos: se guardan en `data/`, que git ignora, y nunca se suben al repositorio. No dejes extractos ni tu base de datos fuera de esa carpeta si vas a contribuir con cambios. Para actualizar, `git pull` y `npm install`; tus datos se conservan.
 
@@ -27,13 +27,15 @@ Al empezar, en **Ajustes**, indica tu última renta presentada: lo anterior no s
 
 La barra lateral sigue tres pasos:
 
-1. **Documentos**: arrastra uno o varios CSV. El bróker y el formato se detectan solos. La primera vez, incluye el historial de tus compras. Después verás desde qué fecha hacen falta movimientos para continuar el FIFO: el cálculo conserva los antecedentes de posiciones abiertas, canjes, divisas y pérdidas aplazadas y comprueba el resultado al recalcular desde esa fecha. Para declarar un ejercicio se necesitan también sus movimientos y las pérdidas pendientes de compensar. Los archivos se agrupan por exchange: puedes añadir más, quitar uno o retirar todos los de un exchange.
+1. **Documentos**: arrastra uno o varios CSV a cualquier parte de la página, o usa **Añadir**. El bróker y el formato se detectan solos. La primera vez, incluye el historial de tus compras. Después verás desde qué fecha hacen falta movimientos para continuar el FIFO: el cálculo conserva los antecedentes de posiciones abiertas, canjes, divisas y pérdidas aplazadas y comprueba el resultado al recalcular desde esa fecha. Para declarar un ejercicio se necesitan también sus movimientos y las pérdidas pendientes de compensar. Cada exchange y cada wallet es una fila de una sola lista: ábrela para ver sus documentos y usa su menú «⋯» para añadir más o quitarlo. El botón **Añadir** reúne los extractos CSV, los wallets y las instrucciones de descarga de cada bróker; el inicio del FIFO se consulta en el enlace bajo el título.
    - DEGIRO: `Transactions` y `Account`.
    - Trade Republic: «Exportación de transacciones».
    - Kraken: `Ledgers`, no `Trades`.
    - Revolut: el extracto de cuenta de Inversiones y el de Cripto. Los CSV antiguos solo dan ticker. Se identifica el ISIN automáticamente cuando hay una correspondencia inequívoca, se aprovecha la columna ISIN si existe y se resuelve la bolsa de los ETF europeos. Un ADR mantiene su propio ISIN.
    - Coinbase: «Transaction history», desde el principio.
+   - Kraken y Coinbase por API: en **Añadir → Kraken o Coinbase por API** pega una clave de solo lectura. En Kraken, Ajustes → API, con el permiso «Query Ledger Entries». En Coinbase, una clave de la CDP (portal.cdp.coinbase.com) con permiso «View»; puedes pegar el JSON que descargas. La clave se comprueba antes de guardarla y la lectura sigue en segundo plano. Cada actualización, en el menú «⋯» del exchange, pide solo lo posterior a su último movimiento, lo pasa por el mismo importador que el CSV y no repite lo que ya subiste. Las claves se guardan en `data/claves-api.json`, con permisos solo para tu usuario y fuera de las copias de seguridad. La API de Kraken no da el valor en dólares de cada línea: esas operaciones se valoran solas con su precio público.
    - CoinTracking: la lista de operaciones (Introducir monedas → Exportar → CSV), no el informe fiscal. Las filas de Kraken o Coinbase que ya cubren sus propios extractos se omiten, así que conviene añadir esos extractos antes. Las permutas entre criptos se valoran a 1 USD si una parte es una stablecoin en dólares y, si no, con el precio de Kraken del activo entregado o del recibido; la valoración se hace sola en segundo plano. Lo que trae CoinTracking cuenta como una cartera externa: un depósito posterior en Kraken o Coinbase sale primero de ahí.
+   - Wallet de Ethereum: en **Añadir → Wallet de Ethereum**, pega la dirección pública (`0x…`). Puedes añadir varios. Se detectan las permutas hechas desde el wallet (Uniswap, agregadores, Curve o staking líquido como ETH → stETH) y aparecen al abrir la fila del wallet, con su fecha, lo entregado, lo recibido y su valor en euros. Todas cuentan por defecto: desmarca las que no quieras incluir y vuelve a marcarlas cuando quieras; el FIFO se recalcula al momento. **Actualizar**, en el menú «⋯» del wallet, trae las nuevas sin repetir las anteriores ni volver a marcar las desmarcadas. El enlace de cada fila abre la transacción en Blockscout.
 2. **Revisar**: completa automáticamente los datos contrastables y muestra lo que aún necesita información. Los dividendos netos pueden conciliarse con el reparto publicado y la cantidad con derecho en la fecha exdividendo. El bruto se reconstruye con esos datos y la retención por diferencia, conservando el neto importado. Se exige coincidencia de fecha, divisa e importe (un céntimo, más la diferencia comprobable entre 4 y 6 decimales por acción, con límite total de cinco céntimos). No se aplica un porcentaje supuesto al neto. Los importes reconstruidos y sus fuentes aparecen en el movimiento; un justificante del bróker permite corregirlos si su redondeo difiere. Las ediciones manuales se respetan. Los avisos de ingresos antiguos no se arrastran a otro ejercicio por vender después el mismo activo.
 3. **Mi Renta**: copia cada importe a su casilla con un clic y marca lo que ya has pasado a Renta Web. También exporta a Excel o PDF.
    - **Dossier**: un documento del ejercicio para revisarlo con un gestor. Incluye las casillas, cada venta con las compras que consume, las rentas por activo, las pérdidas aplazadas y los criterios y ajustes aplicados (coste 0, regla de 2017, restos cerrados, correcciones a mano). Se imprime o se guarda en PDF desde el navegador.
@@ -41,7 +43,7 @@ La barra lateral sigue tres pasos:
 
 En **Inicio**, durante el año en curso, se ve hasta cuándo llegan los datos de cada bróker y se avisa si pasa más de un mes sin subir un extracto de uno en el que aún tienes algo. Del 1 de octubre al 31 de diciembre aparece además lo que podrías compensar antes de fin de año: tus pérdidas sin vender, cuánto bajaría la cuota y cuáles se aplazarían por haber comprado hace poco.
 
-Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá; los saldos a cero se ocultan salvo que actives el interruptor), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
+Para consultar: **Movimientos** (el extracto completo, donde se edita y se añade), **Cartera** (qué tienes, cuánto vale hoy con precios de Yahoo y en qué orden se venderá; los saldos a cero se ocultan salvo que actives el interruptor), **Resultados** (ventas, dividendos e intereses), **Desempeño** (lo ganado o perdido de verdad cada año, con gráficas; la de valor y coste añade una línea con lo ganado hasta cada mes) y **¿Y si vendo?** (una barra por cada activo para ver al momento lo que pagarías, sin guardar nada).
 
 El botón **Mi cartera**, en la parte inferior del menú lateral (en móvil, el icono de cartera de la cabecera), abre un panel que puedes mantener visible mientras usas cualquier sección. Resume tus posiciones actuales de bolsa y cripto con ticker, cantidad, valor total en euros y porcentaje de ganancia o pérdida de las unidades que conservas, sumadas entre brókers. Las ordena de mayor a menor valor total, dejando al final las que no tienen precio. Compara su última cotización disponible en euros con su coste FIFO; no incluye ventas ni dividendos. Muestra también el valor actual y el porcentaje total ponderado por coste. Si falta un precio o coste, aparece «—» y se omite el porcentaje total; puedes actualizar los precios desde el panel.
 
@@ -79,8 +81,8 @@ Importe EUR ± Comisión ± Otros      = Total
 ```
 shared/           Tipos, decimales y lógica de cuadre (la usan servidor y cliente)
 server/engine/    Motor FIFO, regla de recompra, divisas e informe por casillas
-server/importers/ DEGIRO, Trade Republic, Kraken, Revolut, Coinbase y CoinTracking
-server/           API local, SQLite, tipos del BCE, exportación a Excel, dossier, 720/721 y copias
+server/importers/ DEGIRO, Trade Republic, Kraken, Revolut, Coinbase, CoinTracking y wallets de Ethereum
+server/           API local, SQLite, tipos del BCE, API de Kraken y Coinbase, exportación a Excel, dossier, 720/721 y copias
 client/           Interfaz en React
 tests/            Pruebas del motor, importadores y flujo completo
 ```

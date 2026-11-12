@@ -44,10 +44,20 @@ export function computePerformance(res: EngineResult, ops: Operation[], prices: 
   };
   const held = (month: string) => (monthly[month] ?? []).filter((p) => p.class !== 'fx' && D(p.quantity).gt(0));
 
+  // Lo ganado hasta cada mes: ventas, rentas y gastos acumulados más lo que se ganaría vendiendo ese mes.
+  // Suma lo mismo que los años, así que el último mes coincide con el resultado total.
+  const flows = new Map<string, Decimal>();
+  const flow = (date: string, v: Decimal) => flows.set(date.slice(0, 7), (flows.get(date.slice(0, 7)) ?? ZERO).plus(v));
+  for (const d of res.disposals) if (!d.simulated) for (const m of d.matches) if (!m.missing) flow(d.date, D(m.gainEur));
+  for (const i of res.incomes) flow(i.date, D(i.grossEur).minus(D(i.feeEur)));
+  for (const f of res.fees) flow(f.date, D(f.amountEur).neg());
+  const flowMonths = [...flows.keys()].sort();
+  let settled = ZERO, next = 0;
   const months = Object.keys(monthly).sort().map((month) => {
     let value = ZERO, cost = ZERO;
     for (const p of held(month)) { value = value.plus(valueOf(p, month)); cost = cost.plus(D(p.costEur)); }
-    return { month, valueEur: cents(value), costEur: cents(cost) };
+    for (; next < flowMonths.length && flowMonths[next]! <= month; next++) settled = settled.plus(flows.get(flowMonths[next]!)!);
+    return { month, valueEur: cents(value), costEur: cents(cost), gainedEur: cents(settled.plus(value).minus(cost)) };
   });
 
   const first = res.years[0] ?? thisYear;

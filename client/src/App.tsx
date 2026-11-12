@@ -6,6 +6,7 @@ import { ProfileSwitcher } from './components/ProfileSwitcher.tsx';
 import { OperationEditor } from './components/OperationEditor.tsx';
 import { HoldingsPanel } from './components/HoldingsPanel.tsx';
 import { NavigationLinks } from './components/NavigationLinks.tsx';
+import { FifoMark, InkFilter } from './components/motion.tsx';
 import { Dialog } from './components/ui.tsx';
 import { Ctx, type AppCtx, type Page } from './context.ts';
 import { Dividends } from './pages/Dividends.tsx';
@@ -114,11 +115,11 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
       <div className={`layout${holdingsOpen ? ' with-holdings' : ''}`}>
         <header className="mobile-bar no-print">
           <button className="btn quiet icon" aria-label="Abrir menú" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Menu size={21} aria-hidden="true" /></button>
-          <a className="mobile-brand" href="#home" onClick={(e) => { e.preventDefault(); navigate('home'); }}><span className="brand-mark" aria-hidden="true">F</span> FIFO Fiscal</a>
+          <a className="mobile-brand" href="#home" onClick={(e) => { e.preventDefault(); navigate('home'); }}><FifoMark /> FIFO Fiscal</a>
           <button className="btn quiet icon" aria-label="Mi cartera" aria-haspopup="dialog" aria-expanded={holdingsOpen} aria-controls={holdingsOpen ? 'holdings-panel' : undefined} onClick={(e) => toggleHoldings(e.currentTarget)}><Wallet size={21} aria-hidden="true" /></button>
         </header>
         <nav className="side" aria-label="Secciones">
-          <div className="brand"><span className="brand-mark">F</span>FIFO Fiscal</div>
+          <div className="brand"><FifoMark />FIFO Fiscal</div>
           <ProfileSwitcher />
           <NavigationLinks page={page} onNavigate={navigate}>
             <button className="nav-btn holdings-launcher" aria-haspopup="dialog" aria-expanded={holdingsOpen} aria-controls={holdingsOpen ? 'holdings-panel' : undefined} onClick={(e) => toggleHoldings(e.currentTarget)}><PanelRightOpen size={18} aria-hidden="true" /> Mi cartera</button>
@@ -157,6 +158,7 @@ function ProfileApp({ profileId, switchProfile }: { profileId: string; switchPro
           />
         )}
         {toast && <div className="toast" role="status"><Check size={16} /> {toast}</div>}
+        <InkFilter />
       </div>
     </Ctx.Provider>
   );

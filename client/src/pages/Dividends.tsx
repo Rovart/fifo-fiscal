@@ -5,7 +5,7 @@ import { BROKER_LABEL, type Income } from '../../../shared/types.ts';
 import { Empty, Help, Loading, PageHead, Segmented } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
-import { dateShort, eur, initial, isinOf, niceName } from '../format.ts';
+import { dateShort, eur, isinOf, niceName } from '../format.ts';
 import { useApi } from '../hooks.ts';
 
 interface Totals { gross: ReturnType<typeof D>; withheld: ReturnType<typeof D>; net: ReturnType<typeof D>; count: number }
@@ -79,7 +79,6 @@ export function Dividends() {
             return (
               <div key={a.assetId}>
                 <button className="item tap" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : a.assetId)}>
-                  <div className="avatar">{initial(name)}</div>
                   <div className="main-col">
                     <div className="title">{name}</div>
                     <div className="sub">{payments(a.count)} · {brokers}</div>

@@ -220,9 +220,10 @@ export function Performance() {
           <div className="chart-legend small">
             <span><i className="key value" /> Vale</span>
             <span><i className="key cost" /> Te costó</span>
+            <span><i className="key gained" /> Ganado</span>
           </div>
         </div>
-        <ValueChart points={view.months.map((m) => ({ month: m.month, value: Number(m.valueEur), cost: Number(m.costEur) }))} />
+        <ValueChart points={view.months.map((m) => ({ month: m.month, value: Number(m.valueEur), cost: Number(m.costEur), gained: Number(m.gainedEur) }))} />
       </div>
 
       <div className="card flush">

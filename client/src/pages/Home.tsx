@@ -4,6 +4,7 @@ import { D, Decimal } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type BrokerFreshness, type YearEndReview } from '../../../shared/types.ts';
 import { Callout, Help, LoadError, Loading, PageHead, YearPicker } from '../components/ui.tsx';
 import { DivergingBars } from '../components/charts.tsx';
+import { Rolling } from '../components/motion.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, dayMonth, eur, niceName, signClass, signed } from '../format.ts';
@@ -198,11 +199,11 @@ export function Home() {
         <div className="hero">
           <div>
             <div className="hero-label">{D(total).lt(0) ? 'Has perdido' : 'Has ganado'} <Help text={HELP.resultado} /></div>
-            <div className={`hero-value ${signClass(total)}`}>{eur(D(total).abs().toFixed(2))}</div>
+            <div className={`hero-value ${signClass(total)}`}><Rolling value={eur(D(total).abs().toFixed(2))} /></div>
           </div>
           <div className="hero-side">
             <div className="hero-label">A pagar, aproximado <Help text={HELP.apagar} /></div>
-            <div className="val">{eur(rep.savings.taxAfterCredits)}</div>
+            <div className="val"><Rolling value={eur(rep.savings.taxAfterCredits)} /></div>
           </div>
         </div>
         <div className="stats">

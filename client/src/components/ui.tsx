@@ -211,3 +211,44 @@ export function NumField({ label, value, onChange, placeholder }: { label: React
     </label>
   );
 }
+
+/** `checked` convierte el menú en una elección entre opciones: la elegida lleva una marca. */
+export interface MenuItem { label: string; icon?: LucideIcon; onSelect: () => void; danger?: boolean; disabled?: boolean; checked?: boolean }
+
+/** Menú desplegable: reúne las acciones de una fila o de una página en un solo botón. */
+export function Menu({ label, ariaLabel, className = 'btn', items, disabled }: { label: ReactNode; ariaLabel?: string; className?: string; items: MenuItem[]; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const options = () => [...(ref.current?.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)') ?? [])];
+    // Si no cabe hacia la izquierda, se abre hacia la derecha.
+    const list = ref.current?.querySelector<HTMLElement>('.menu-list');
+    if (list && list.getBoundingClientRect().left < 8) list.classList.add('from-left');
+    (options().find((o) => o.getAttribute('aria-checked') === 'true') ?? options()[0])?.focus();
+    const outside = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus(); }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      const list = options(), at = list.indexOf(document.activeElement as HTMLButtonElement);
+      list[(at + (e.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
+  }, [open]);
+  return (
+    <div className="menu" ref={ref}>
+      <button type="button" className={className} aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel} disabled={disabled} onClick={() => setOpen((o) => !o)}>{label}</button>
+      {open && <div className="menu-list" role="menu">
+        {items.map((it) => (
+          <button type="button" role={it.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={it.checked} key={it.label} className={`menu-item ${it.danger ? 'danger' : ''}`} disabled={it.disabled} onClick={() => { setOpen(false); it.onSelect(); }}>
+            {it.icon && <it.icon size={16} aria-hidden="true" />}{it.label}
+            {it.checked && <Check size={16} className="menu-check" aria-hidden="true" />}
+          </button>
+        ))}
+      </div>}
+    </div>
+  );
+}

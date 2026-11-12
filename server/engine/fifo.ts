@@ -115,8 +115,9 @@ export function runEngine(input: EngineInput): EngineResult {
   const holdings = (assetId: string): Decimal => book(assetId).lots.reduce((s, l) => s.plus(l.qty), ZERO);
   const noteHistory = (assetId: string, date: string) => book(assetId).history.push({ date, qty: holdings(assetId) });
   const moveBroker = (assetId: string, broker: string, delta: Decimal) => {
-    // CoinTracking reúne exchanges sin extracto propio y carteras: para los demás es una cartera externa.
-    const where = broker === 'cointracking' ? 'externo' : broker;
+    // CoinTracking reúne exchanges sin extracto propio y carteras; un wallet es una cartera propia:
+    // para los demás, ambos son la cartera externa adonde llegan las retiradas.
+    const where = broker === 'cointracking' || broker === 'ethereum' ? 'externo' : broker;
     let m = brokerQty.get(assetId);
     if (!m) { m = new Map(); brokerQty.set(assetId, m); }
     m.set(where, (m.get(where) ?? ZERO).plus(delta));

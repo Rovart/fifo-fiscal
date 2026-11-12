@@ -31,7 +31,8 @@ const KNOWN: Record<string, string> = { US02079K3059: 'GOOGL', US02079K1079: 'GO
 
 /** Símbolos posibles en orden de preferencia: no todos los que da el buscador tienen histórico. */
 export async function symbolCandidates(assetId: string, name: string, klass: string): Promise<string[]> {
-  if (klass === 'crypto') return [`${assetId}-EUR`];
+  // Yahoo no cotiza en euros todos los tokens (stETH solo en dólares): el dólar pasa a euros al cambio del BCE.
+  if (klass === 'crypto') return [`${assetId}-EUR`, `${assetId}-USD`];
   if (KNOWN[assetId]) return [KNOWN[assetId]];
   const verified = securityFor(assetId);
   if (verified) return verified.symbols;

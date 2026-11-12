@@ -1,6 +1,6 @@
 import { D, Decimal, ZERO, toStr } from '../../shared/decimal.ts';
 import type { Broker, OpKind, Operation } from '../../shared/types.ts';
-import { KeyCounter, addCount, baseOp, finishTrade, flexibleDate, isFiat, num, review, valueInEur, type ParsedImport, type RateFn } from './common.ts';
+import { KeyCounter, STABLE, addCount, baseOp, finishTrade, flexibleDate, isFiat, num, review, valueInEur, type ParsedImport, type RateFn } from './common.ts';
 import { findCol, norm } from './csv.ts';
 import { cryptoName } from './kraken.ts';
 
@@ -27,7 +27,6 @@ export const looksLikeCoinTrackingReport = (h: string[]) =>
 
 /** Exchanges con importador propio: su extracto trae depósitos, staking y comisiones que CoinTracking no siempre tiene. */
 const NATIVE: { broker: Broker; match: RegExp }[] = [{ broker: 'kraken', match: /^kraken\b/i }, { broker: 'coinbase', match: /^coinbase$/i }];
-const STABLE = new Set(['USDT', 'USDC', 'BUSD', 'TUSD', 'USDP', 'PAX', 'DAI', 'GUSD']);
 const STAKING = new Set(['staking', 'interest income', 'lending income', 'masternode', 'minting', 'dividends income']);
 // Regalos, airdrops y entradas sin contrapartida: el historial de CoinTracking los lleva con coste 0.
 const FREE = new Set(['income', 'other income', 'airdrop', 'reward / bonus', 'gift / tip', 'gift/tip', 'mining', 'mining (commercial)']);

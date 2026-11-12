@@ -89,4 +89,3 @@ export function units(quantity: string | null | undefined, klass: string, assetI
   if (klass === 'etf' || klass === 'fund') return `${n} ${one ? 'participación' : 'participaciones'}`;
   return n;
 }
-export const initial = (name: string): string => niceName(name).charAt(0).toUpperCase() || '?';

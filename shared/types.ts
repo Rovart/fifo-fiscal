@@ -1,4 +1,4 @@
-export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'cointracking' | 'manual';
+export type Broker = 'degiro' | 'trade_republic' | 'kraken' | 'revolut' | 'coinbase' | 'cointracking' | 'ethereum' | 'manual';
 export interface Profile { id: string; name: string }
 /** Copia de seguridad de todas las cuentas. */
 export interface Backup { id: string; at: string; kind: 'daily' | 'manual' | 'antes-de-restaurar'; bytes: number; profiles: string[] }
@@ -397,7 +397,8 @@ export interface PerformanceAsset {
 export interface PerformanceData {
   years: PerformanceYear[];
   assets: PerformanceAsset[];
-  months: { month: string; valueEur: string; costEur: string }[];
+  /** gainedEur: lo ganado hasta ese mes, vendido o no, con rentas y gastos. */
+  months: { month: string; valueEur: string; costEur: string; gainedEur: string }[];
   /** Valor actual por sitio donde está guardado. */
   places: { broker: string; valueEur: string }[];
   totalResultEur: string;
@@ -451,5 +452,5 @@ export const KIND_LABEL: Record<OpKind, string> = {
   transfer_out: 'Salida a otra cuenta', split: 'Split o acciones gratis', isin_change: 'Canje de acciones',
 };
 export const BROKER_LABEL: Record<Broker, string> = {
-  degiro: 'DEGIRO', trade_republic: 'Trade Republic', kraken: 'Kraken', revolut: 'Revolut', coinbase: 'Coinbase', cointracking: 'CoinTracking', manual: 'Manual',
+  degiro: 'DEGIRO', trade_republic: 'Trade Republic', kraken: 'Kraken', revolut: 'Revolut', coinbase: 'Coinbase', cointracking: 'CoinTracking', ethereum: 'Wallet Ethereum', manual: 'Manual',
 };

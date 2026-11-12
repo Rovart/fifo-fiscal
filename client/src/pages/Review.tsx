@@ -176,7 +176,7 @@ function BalanceRow({ p, onSaved }: { p: PositionRow; onSaved: () => void }) {
   };
   return (
     <tr>
-      <td>{niceName(p.assetName)}<div className="small muted">{p.broker === 'externo' ? 'Carteras propias' : BROKER_LABEL[p.broker as Broker] ?? p.broker}</div></td>
+      <td>{niceName(p.assetName)}<div className="small muted">{p.broker === 'externo' ? 'Fuera de los brókers' : BROKER_LABEL[p.broker as Broker] ?? p.broker}</div></td>
       <td className="r">{qty(p.computed)}</td>
       <td className="r">
         <input className="input" style={{ width: 120, minHeight: 32, padding: '4px 8px', textAlign: 'right' }} inputMode="decimal" placeholder="—" aria-label={`Saldo real de ${p.assetName}`} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => void save()} />
@@ -260,6 +260,11 @@ export function Review() {
             <thead><tr><th>Activo</th><th className="r">Calculado</th><th className="r">Tu saldo real</th><th /></tr></thead>
             <tbody>{data.positions.map((p) => <BalanceRow key={`${p.broker}${p.assetId}`} p={p} onSaved={() => changed()} />)}</tbody>
           </table>
+          {data.positions.some((p) => p.broker === 'externo') && (
+            <p className="small muted" style={{ marginTop: 8 }}>
+              «Fuera de los brókers» suma lo retirado de los exchanges y las permutas de tus wallets. Los envíos entre wallets, los puentes y el gas no se importan: si no coincide, suele venir de ahí.
+            </p>
+          )}
         </Disclosure>
       )}
       {groups.infos.length > 0 && (

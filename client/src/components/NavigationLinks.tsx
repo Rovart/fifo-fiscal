@@ -1,6 +1,7 @@
 import { BarChart3, Check, CircleHelp, Coins, Home, ListOrdered, Settings, TrendingUp, Wallet } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useApp, type Page } from '../context.ts';
+import { NavIndicator } from './motion.tsx';
 
 function NavLink({ id, page, onNavigate, children }: { id: Page; page: Page; onNavigate: (page: Page) => void; children: ReactNode }) {
   return <a className={`nav-btn ${page === id ? 'on' : ''}`} href={`#${id}`} aria-current={page === id ? 'page' : undefined} onClick={(e) => {
@@ -21,6 +22,7 @@ export function NavigationLinks({ page, onNavigate, children }: { page: Page; on
   const pending = counts.errors + counts.warnings;
   const link = { page, onNavigate };
   return <>
+    <NavIndicator watch={`${page}-${pending}-${hasData}`} />
     <NavLink id="home" {...link}><Home size={18} aria-hidden="true" /> Inicio</NavLink>
     <div className="nav-group">Tu declaración</div>
     <NavLink id="upload" {...link}><Step n={1} done={hasData} /> Documentos</NavLink>

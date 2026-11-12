@@ -6,7 +6,7 @@ import { BlockingBuys, groupLosses } from '../components/DeferredLoss.tsx';
 import { Disclosure, Empty, Help, LoadError, Loading, PageHead, Segmented } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
-import { dateShort, eur, initial, isinOf, niceName, qty, signClass, signed, units } from '../format.ts';
+import { dateShort, eur, isinOf, niceName, qty, signClass, signed, units } from '../format.ts';
 import { useApi } from '../hooks.ts';
 
 const CLASS_CHIPS: { id: DisposalClass; label: string }[] = [
@@ -52,7 +52,6 @@ function Sales() {
             return (
               <div key={d.id}>
                 <button className="item tap" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : d.id)}>
-                  <div className="avatar">{initial(d.assetName)}</div>
                   <div className="main-col">
                     <div className="title">{niceName(d.assetName)}</div>
                     <div className="sub">{units(d.quantity, d.class, d.assetId)} · {dateShort(d.date)}</div>
