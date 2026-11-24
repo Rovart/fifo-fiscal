@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ chart: vi.fn(), candidates: vi.fn() }));
 vi.mock('../server/quotes.ts', () => ({ refreshQuotes: async () => ({}), storedQuotes: () => ({}), symbolCandidates: mocks.candidates, yf: { chart: mocks.chart } }));
 process.env.FIFO_DB = ':memory:';
 const { db, putOp, saveAsset } = await import('../server/db.ts');
-const { refreshPriceHistory } = await import('../server/history.ts');
+const { performance, refreshPriceHistory } = await import('../server/history.ts');
 
 describe('Cobertura del histórico de precios', () => {
   beforeEach(() => { db.exec('DELETE FROM operations; DELETE FROM price_history; DELETE FROM price_symbols; DELETE FROM assets'); vi.clearAllMocks(); });
@@ -24,6 +24,20 @@ describe('Cobertura del histórico de precios', () => {
     mocks.chart.mockImplementation(async (symbol) => ({ meta: { currency: 'EUR' }, quotes: symbol === 'OLD' ? [] : [{ date: '2025-01-01', close: 100 }] }));
     await refreshPriceHistory();
     expect(db.prepare('SELECT symbol FROM price_symbols WHERE asset_id = ?').get('EURO')).toMatchObject({ symbol: 'EURO.DE' });
+  });
+  it('ignora y sustituye la serie de una clase distinta aunque tenga más meses', async () => {
+    const assetId = 'IE00BFM6TC58';
+    putOp(trade('buy', '2025-10-03', '100', '4', { assetId, assetName: 'iShares Treasury Acc', assetClass: 'etf' }));
+    db.prepare('INSERT INTO price_symbols VALUES (?,?,?)').run(assetId, 'IS04.DE', '2026-01-01');
+    db.prepare('INSERT INTO price_history VALUES (?,?,?)').run(assetId, '2025-12', '2.75');
+    expect(performance().assets.find((a) => a.assetId === assetId)?.years[2025]?.valueEndEur).toBe('400.00');
+
+    mocks.candidates.mockResolvedValue(['DTLA.L']);
+    mocks.chart.mockResolvedValue({ meta: { currency: 'EUR' }, quotes: [{ date: '2025-11-01', close: 4.2 }] });
+    await refreshPriceHistory();
+    expect(mocks.chart.mock.calls.map(([symbol]) => symbol)).toEqual(['DTLA.L']);
+    expect(db.prepare('SELECT month, price_eur FROM price_history WHERE asset_id = ?').all(assetId)).toEqual([{ month: '2025-11', price_eur: '4.20000000' }]);
+    expect(performance().assets.find((a) => a.assetId === assetId)?.years[2025]?.valueEndEur).toBe('420.00');
   });
   it('guarda como cierre del OAT su última cotización válida del mes con cupón corrido', async () => {
     const assetId = 'FR0010070060';

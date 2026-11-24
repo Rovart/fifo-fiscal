@@ -164,7 +164,7 @@ export function Renta() {
         <>
           <div className="stat-grid">
             <div className="stat-card">
-              <div className="l">A pagar, aproximado <Help text={HELP.apagar} /></div>
+              <div className="l">Impuesto estimado de tus inversiones <Help text={HELP.apagar} /></div>
               <div className="v"><Rolling value={eur(rep.savings.taxAfterCredits)} /></div>
             </div>
             <div className="stat-card stamp-card">
@@ -177,11 +177,11 @@ export function Renta() {
 
           <div className="stack" style={{ gap: 10 }}>
             {hasRcm && (
-              <Acc title="Dividendos e intereses" hint="Apartado B" done={doneSet.has('rcm')} right={<span className="num strong">{eur(rcm.net)}</span>} {...acc('rcm')}>
+              <Acc title="Rendimientos del capital mobiliario" hint="Apartado B" done={doneSet.has('rcm')} right={<span className="num strong">{eur(rcm.net)}</span>} {...acc('rcm')}>
                 <Entry id="rcm" title="Capital mobiliario" doneSet={doneSet} toggle={toggle}>
                   {nz(interestTotal) && <BoxRow box="0027" label={nz(rcm.staking) ? 'Intereses y staking' : 'Intereses'} value={interestTotal} />}
                   {nz(dividendTotal) && <BoxRow box="0029" label="Dividendos" value={dividendTotal} />}
-                  {nz(rcm.bonds) && <BoxRow box="0031" label="Renta fija" value={rcm.bonds} />}
+                  {nz(rcm.bonds) && <BoxRow box="0031" label="Transmisión de activos financieros" value={rcm.bonds} />}
                   {nz(rcm.custody) && <BoxRow box="0037" label="Gastos de custodia" value={rcm.custody} />}
                   {nz(rcm.spanishTax) && <BoxRow box="0597" label={<span className="inline">Retenciones en España <Help text={HELP.retencion} /></span>} value={rcm.spanishTax} />}
                 </Entry>
@@ -250,10 +250,10 @@ export function Renta() {
               </div>
             </Disclosure>
           )}
-          <Disclosure card title="Cómo se calcula lo que pagas">
+          <Disclosure card title="Cálculo del impuesto estimado">
             <div className="kv">
               <span>Ventas</span><span className={`num ${signClass(rep.savings.gppBalance)}`}>{signed(rep.savings.gppBalance)}</span>
-              <span>Dividendos e intereses</span><span className={`num ${signClass(rep.savings.rcmBalance)}`}>{signed(rep.savings.rcmBalance)}</span>
+              <span>Capital mobiliario</span><span className={`num ${signClass(rep.savings.rcmBalance)}`}>{signed(rep.savings.rcmBalance)}</span>
               {rep.savings.steps.map((st, i) => (
                 <span key={i} style={{ display: 'contents' }}><span className="small muted">{st.label}</span><span className="num small">{eur(st.amount)}</span></span>
               ))}
@@ -269,9 +269,9 @@ export function Renta() {
             </table>
             <div className="kv" style={{ marginTop: 12 }}>
               <span>Impuesto</span><span className="num">{eur(rep.savings.tax)}</span>
-              {nz(rep.doubleTaxDeduction) && <><span className="muted">Retenido fuera</span><span className="num">−{eur(rep.doubleTaxDeduction)}</span></>}
+              {nz(rep.doubleTaxDeduction) && <><span className="muted">Deducción por doble imposición</span><span className="num">−{eur(rep.doubleTaxDeduction)}</span></>}
               {nz(rcm.spanishTax) && <><span className="muted">Retenido en España</span><span className="num">−{eur(rcm.spanishTax)}</span></>}
-              <span className="total">A pagar, aproximado</span><span className="num total">{eur(rep.savings.taxAfterCredits)}</span>
+              <span className="total">Impuesto estimado de tus inversiones</span><span className="num total">{eur(rep.savings.taxAfterCredits)}</span>
             </div>
             {rep.savings.carryForward.length > 0 && (
               <p className="small muted" style={{ marginTop: 12 }}>

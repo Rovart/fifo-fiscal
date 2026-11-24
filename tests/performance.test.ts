@@ -90,6 +90,18 @@ describe('Desempeño', () => {
 });
 
 describe('Desempeño: rentas por tipo', () => {
+  it('cuenta la venta de renta fija una sola vez aunque el FIFO genere su rendimiento fiscal', () => {
+    const bond = { assetId: 'FR0000000001', assetName: 'Bono', assetClass: 'bond' as const };
+    const ops = [trade('buy', '2026-01-02', '10', '10', bond), trade('sell', '2026-05-14', '10', '15', bond)];
+    const today = '2026-11-03';
+    const res = engine(ops, today);
+    expect(res.incomes).toMatchObject([{ type: 'bond', grossEur: '50' }]);
+
+    const result = computePerformance(res, ops, book({}), today);
+    expect(result.years[0]).toMatchObject({ realizedEur: '50.00', incomeEur: '0.00', incomeByType: { other: '0.00' }, resultEur: '50.00' });
+    expect(result.assets[0]?.years[2026]).toMatchObject({ realizedEur: '50.00', incomeEur: '0.00', resultEur: '50.00' });
+    expect(result.months.at(-1)?.gainedEur).toBe('50.00');
+  });
   it('desglosa dividendos, intereses, staking y recompensas sin cambiar el total', () => {
     const income = (kind: Operation['kind'], date: string, eur: string, extra: Partial<Operation> = {}): Operation =>
       ({ ...trade('buy', date, '0', '0'), kind, quantity: null, grossLocal: eur, grossEur: eur, totalEur: eur, ...extra });

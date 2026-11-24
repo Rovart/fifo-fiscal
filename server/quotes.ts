@@ -1,6 +1,6 @@
 import YahooFinance from 'yahoo-finance2';
 import { OAT_2035, oatPrices } from './bond-prices.ts';
-import { securityFor } from './securities.ts';
+import { compatiblePriceSymbol, securityFor } from './securities.ts';
 import { D, type Decimal } from '../shared/decimal.ts';
 import { db, listAssets, rateAt } from './db.ts';
 import { engine, priceEur, refreshEcbRates, today } from './service.ts';
@@ -9,7 +9,8 @@ export interface Quote { assetId: string; symbol: string | null; currency: strin
 
 export function storedQuotes(): Record<string, Quote> {
   const rows = db.prepare('SELECT * FROM quotes').all() as { asset_id: string; symbol: string | null; currency: string | null; price: string | null; price_eur: string | null; at: string | null; fetched_at: string | null }[];
-  return Object.fromEntries(rows.map((r) => [r.asset_id, { assetId: r.asset_id, symbol: r.symbol, currency: r.currency, price: r.price, priceEur: r.price_eur, at: r.at, fetchedAt: r.fetched_at }]));
+  return Object.fromEntries(rows.filter((r) => compatiblePriceSymbol(r.asset_id, r.symbol))
+    .map((r) => [r.asset_id, { assetId: r.asset_id, symbol: r.symbol, currency: r.currency, price: r.price, priceEur: r.price_eur, at: r.at, fetchedAt: r.fetched_at }]));
 }
 
 export const yf = new YahooFinance({ suppressNotices: ['yahooSurvey'] });

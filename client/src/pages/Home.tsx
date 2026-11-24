@@ -202,7 +202,7 @@ export function Home() {
             <div className={`hero-value ${signClass(total)}`}><Rolling value={eur(D(total).abs().toFixed(2))} /></div>
           </div>
           <div className="hero-side">
-            <div className="hero-label">A pagar, aproximado <Help text={HELP.apagar} /></div>
+            <div className="hero-label">Impuesto estimado de tus inversiones <Help text={HELP.apagar} /></div>
             <div className="val"><Rolling value={eur(rep.savings.taxAfterCredits)} /></div>
           </div>
         </div>
@@ -212,7 +212,7 @@ export function Home() {
             <div className={`v ${signClass(sales)}`}>{signed(sales)}</div>
           </button>
           <button className="stat" onClick={() => go('results')}>
-            <div className="l">Dividendos e intereses</div>
+            <div className="l">Capital mobiliario</div>
             <div className={`v ${signClass(income)}`}>{signed(income)}</div>
           </button>
           {D(rep.rewards).gt(0) && (

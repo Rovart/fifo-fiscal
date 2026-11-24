@@ -23,7 +23,7 @@ const placeName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BR
 
 const sum = (rows: PerformanceYear[], key: 'realizedEur' | 'incomeEur' | 'feesEur' | 'unrealizedChangeEur' | 'resultEur' | 'unknownCostProceedsEur') =>
   rows.reduce((s, r) => s.plus(D(r[key])), ZERO);
-const INCOME_LABEL: Record<IncomeGroup, string> = { dividends: 'Dividendos', interest: 'Intereses', staking: 'Staking', rewards: 'Recompensas', other: 'Otros' };
+const INCOME_LABEL: Record<IncomeGroup, string> = { dividends: 'Dividendos', interest: 'Intereses', staking: 'Staking', rewards: 'Recompensas', other: 'Exceso de devolución de capital' };
 const incomeParts = (rows: PerformanceYear[]) => (Object.keys(INCOME_LABEL) as IncomeGroup[])
   .map((k) => ({ label: INCOME_LABEL[k], value: rows.reduce((s, r) => s.plus(D(r.incomeByType?.[k] ?? 0)), ZERO) }))
   .filter((p) => !p.value.isZero());

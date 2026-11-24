@@ -351,8 +351,8 @@ export interface SalesSimulation {
 }
 
 export type IncomeGroup = 'dividends' | 'interest' | 'staking' | 'rewards' | 'other';
-export const INCOME_GROUP: Record<Income['type'], IncomeGroup> = {
-  dividend: 'dividends', interest: 'interest', staking: 'staking', reward: 'rewards', capital_excess: 'other', bond: 'other',
+export const INCOME_GROUP: Record<Exclude<Income['type'], 'bond'>, IncomeGroup> = {
+  dividend: 'dividends', interest: 'interest', staking: 'staking', reward: 'rewards', capital_excess: 'other',
 };
 
 export interface PerformanceYear {

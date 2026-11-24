@@ -8,6 +8,7 @@ import { runEngine } from './engine/fifo.ts';
 import { computePerformance } from './engine/performance.ts';
 import { buildYearReport } from './engine/report.ts';
 import { refreshQuotes, storedQuotes, symbolCandidates, yf } from './quotes.ts';
+import { compatiblePriceSymbol } from './securities.ts';
 import { assetsMap, krakenListed, krakenNoTrade, priceEur, today, withAssetMeta } from './service.ts';
 
 function monthlyEngine() {
@@ -90,10 +91,10 @@ export async function refreshPriceHistory() {
     }
   }
   const known = new Map((db.prepare('SELECT asset_id, symbol FROM price_symbols WHERE symbol IS NOT NULL').all() as { asset_id: string; symbol: string }[]).map((r) => [r.asset_id, r.symbol]));
-  // El símbolo de la cotización actual ya está comprobado.
-  for (const q of Object.values(storedQuotes())) if (q.symbol && q.symbol !== 'Kraken' && !known.has(q.assetId)) known.set(q.assetId, q.symbol);
+  const quotes = storedQuotes();
   const saveSymbol = db.prepare('INSERT INTO price_symbols (asset_id, symbol, fetched_at) VALUES (?, ?, ?) ON CONFLICT(asset_id) DO UPDATE SET symbol = excluded.symbol, fetched_at = excluded.fetched_at');
   const savePrice = db.prepare('INSERT INTO price_history (asset_id, month, price_eur) VALUES (?, ?, ?) ON CONFLICT(asset_id, month) DO UPDATE SET price_eur = excluded.price_eur');
+  const deletePrices = db.prepare('DELETE FROM price_history WHERE asset_id = ?');
   const now = new Date().toISOString();
   const asOf = today();
   const missing: string[] = [];
@@ -111,7 +112,9 @@ export async function refreshPriceHistory() {
         continue;
       }
       const remembered = known.get(assetId);
-      const candidates = [...new Set([...(remembered ? [remembered] : []), ...await symbolCandidates(assetId, r.name, r.klass)])];
+      const quoted = quotes[assetId]?.symbol;
+      const cached = [remembered, quoted].filter((s): s is string => !!s && s !== 'Kraken' && compatiblePriceSymbol(assetId, s));
+      const candidates = [...new Set([...cached, ...await symbolCandidates(assetId, r.name, r.klass)])];
       // Un nombre puede dar otra clase del mismo fondo: el precio debe parecerse al de tu primera compra.
       let chosen: { symbol: string; closes: Map<string, Decimal> } | null = null;
       let coverage = 0;
@@ -126,10 +129,16 @@ export async function refreshPriceHistory() {
         // Si no coincide con el coste por unidad, no se usa otra clase por parecido de nombre.
       }
       if (chosen) {
-        for (const [month, px] of chosen.closes) savePrice.run(assetId, month, px.toFixed(8));
-        saveSymbol.run(assetId, chosen.symbol, now);
+        db.exec('BEGIN');
+        try {
+          // Un histórico de otra clase no debe seguir rellenando los meses sin datos.
+          if (!compatiblePriceSymbol(assetId, remembered)) deletePrices.run(assetId);
+          for (const [month, px] of chosen.closes) savePrice.run(assetId, month, px.toFixed(8));
+          saveSymbol.run(assetId, chosen.symbol, now);
+          db.exec('COMMIT');
+        } catch (e) { db.exec('ROLLBACK'); throw e; }
       } else {
-        saveSymbol.run(assetId, null, now);
+        if (!remembered) saveSymbol.run(assetId, null, now);
         // Comprado este mes aún no tiene cierre: basta su cotización de hoy.
         if (!storedQuotes()[assetId]?.priceEur) missing.push(r.name);
       }
@@ -143,7 +152,8 @@ export async function refreshPriceHistory() {
 export function performance(): PerformanceData {
   const { ops, res } = monthlyEngine();
   const settings = getSettings();
-  const rows = db.prepare('SELECT asset_id, month, price_eur FROM price_history').all() as { asset_id: string; month: string; price_eur: string }[];
+  const rows = (db.prepare('SELECT h.asset_id, h.month, h.price_eur, s.symbol FROM price_history h LEFT JOIN price_symbols s ON s.asset_id = h.asset_id').all() as { asset_id: string; month: string; price_eur: string; symbol: string | null }[])
+    .filter((r) => compatiblePriceSymbol(r.asset_id, r.symbol));
   const history = new Map(rows.map((r) => [`${r.asset_id}|${r.month}`, D(r.price_eur)]));
   const quotes = storedQuotes();
   const current = (id: string) => (quotes[id]?.priceEur ? D(quotes[id].priceEur) : null);

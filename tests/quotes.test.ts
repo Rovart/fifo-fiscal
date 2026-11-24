@@ -11,13 +11,23 @@ const { symbolCandidates, refreshQuotes, storedQuotes } = await import('../serve
 
 describe('Identificación y precios por bolsa', () => {
   beforeEach(() => { vi.clearAllMocks(); db.exec('DELETE FROM quotes'); mocks.search.mockResolvedValue({ quotes: [] }); });
-  it('usa el ISIN y la clase exacta de los cuatro ETF europeos', async () => {
+  it('usa el ISIN y la clase exacta de los ETF verificados', async () => {
     for (const s of SECURITIES) {
       expect(validIsin(s.isin)).toBe(true);
       expect(await symbolCandidates(s.isin, s.name, 'etf')).toEqual(s.symbols);
       expect(await symbolCandidates(s.ticker, s.name, 'etf')).toEqual(s.symbols);
     }
     expect(mocks.search).not.toHaveBeenCalled();
+  });
+  it('descarta una cotización guardada de otra clase del ETF', async () => {
+    const assetId = 'IE00BFM6TC58';
+    mocks.engine.mockReturnValue({ positions: [{ assetId, assetName: 'iShares Treasury Acc', class: 'etf', quantity: '10' }] });
+    db.prepare('INSERT INTO quotes (asset_id,symbol,price_eur) VALUES (?,?,?)').run(assetId, 'IS04.DE', '2.75');
+    expect(storedQuotes()[assetId]).toBeUndefined();
+    mocks.quote.mockResolvedValue({ regularMarketPrice: 4.5, currency: 'EUR' });
+    await refreshQuotes();
+    expect(mocks.quote.mock.calls.map(([symbol]) => symbol)).toEqual(['DTLA.L']);
+    expect(storedQuotes()[assetId]).toMatchObject({ symbol: 'DTLA.L', priceEur: '4.50000000' });
   });
   it('busca sufijos de bolsa sin aceptar otros tickers parecidos', async () => {
     mocks.search.mockResolvedValue({ quotes: [{ symbol: 'EURO.DE', quoteType: 'ETF' }, { symbol: 'EURO.L', quoteType: 'ETF' }, { symbol: 'EUROX.DE', quoteType: 'ETF' }] });
