@@ -20,7 +20,7 @@ export function dossier(year: number): Dossier {
   const rep = report(year);
   const settings = getSettings();
   const ops = new Map(allOps().map((o) => [o.id, o]));
-  const sectionOf = new Map(rep.sections.flatMap((s) => s.entries.map((e) => [e.assetId, s.title] as const)));
+  const sectionOf = new Map(rep.sections.filter((s) => s.id !== 'prior_losses').flatMap((s) => s.entries.map((e) => [e.assetId, s.title] as const)));
 
   const byAsset = new Map<string, DossierAsset>();
   for (const d of res.disposals.filter((x) => x.year === year && !isNeutralFx(x)).sort((a, b) => a.date.localeCompare(b.date))) {

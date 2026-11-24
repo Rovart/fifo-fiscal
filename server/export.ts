@@ -39,13 +39,14 @@ export async function exportYear(year: number): Promise<Uint8Array> {
   add('Airdrops y recompensas (base general)', rep.rewards, '0304');
   sum.addRow({});
   for (const s of rep.sections) {
+    if (s.id === 'prior_losses') continue;
     add(`${s.title}: ganancias`, s.gainTotal);
     add(`${s.title}: pérdidas obtenidas`, s.lossTotal);
     add(`${s.title}: pérdidas computables`, s.lossComputableTotal);
   }
   sum.addRow({});
   add('Pérdidas diferidas por recompra generadas', rep.deferred.generated);
-  add('Pérdidas diferidas de años anteriores integradas', rep.deferred.released);
+  add('Pérdidas diferidas de años anteriores integradas', rep.deferred.released, rep.sections.find((s) => s.id === 'prior_losses')?.boxes.sumLoss);
   add('Pérdidas diferidas pendientes a fin de ejercicio', rep.deferred.pendingEnd);
   sum.addRow({});
   add('Saldo de transmisiones', rep.savings.gppBalance);
@@ -60,9 +61,13 @@ export async function exportYear(year: number): Promise<Uint8Array> {
   form.columns = [
     { header: 'Bloque', key: 'sec', width: 38 }, { header: 'Denominación', key: 'name', width: 34 }, { header: 'ISIN o activo', key: 'id', width: 16 }, { header: 'Clave', key: 'clave', width: 7 },
     { header: 'Valor de transmisión', key: 't', width: 15 }, { header: 'Valor de adquisición', key: 'a', width: 15 }, { header: 'Ganancia', key: 'g', width: 13 },
-    { header: 'Pérdida obtenida', key: 'lo', width: 13 }, { header: 'Pérdida computable', key: 'lc', width: 13 }, { header: 'Casillas (transm./adq.)', key: 'box', width: 16 }, { header: 'Nota', key: 'note', width: 60 },
+    { header: 'Pérdida obtenida', key: 'lo', width: 13 }, { header: 'Pérdida computable', key: 'lc', width: 13 }, { header: 'Casillas', key: 'box', width: 16 }, { header: 'Nota', key: 'note', width: 60 },
   ];
   for (const s of rep.sections) {
+    if (s.id === 'prior_losses') {
+      form.addRow({ sec: s.title, lc: num(s.lossComputableTotal), box: s.boxes.lossComputable });
+      continue;
+    }
     for (const e of s.entries) {
       form.addRow({
         sec: s.title, name: e.name, id: e.assetId.replace('FX:', ''), clave: e.clave ?? '', t: num(e.transmission), a: num(e.acquisition), g: num(e.gain), lo: num(e.lossObtained),

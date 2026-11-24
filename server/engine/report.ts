@@ -17,7 +17,7 @@ export interface FormEntry {
 }
 
 export interface FormSection {
-  id: 'stock' | 'etf' | 'crypto' | 'fx' | 'other';
+  id: 'stock' | 'etf' | 'crypto' | 'fx' | 'other' | 'prior_losses';
   title: string;
   boxes: Record<string, string>;
   entries: FormEntry[];
@@ -69,6 +69,10 @@ const SECTION_META: Record<FormSection['id'], { title: string; boxes: Record<str
   other: {
     title: 'F2. Otros valores sin bloque propio',
     boxes: { transmission: '1633', acquisition: '1637' },
+  },
+  prior_losses: {
+    title: 'F2. Imputación de pérdidas patrimoniales de transmisiones de ejercicios anteriores',
+    boxes: { lossComputable: '0395', sumLoss: '0396' },
   },
 };
 
@@ -249,13 +253,14 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
   }
 
   // Pérdidas diferidas de años anteriores que este año pasan a integrarse.
-  const released = new Map<string, Decimal>();
+  const released = new Map<string, { name: string; amount: Decimal }>();
   for (const t of res.tranches) {
-    if (t.status === 'blocked' || t.year !== year) continue;
-    if (Number(t.originDate.slice(0, 4)) < year) {
-      released.set(t.assetId, (released.get(t.assetId) ?? ZERO).plus(D(t.amountEur)));
-    }
+    if (t.status !== 'integrated' || t.year !== year || Number(t.originDate.slice(0, 4)) >= year) continue;
+    const asset = released.get(t.assetId) ?? { name: t.assetName, amount: ZERO };
+    asset.amount = asset.amount.plus(D(t.amountEur));
+    released.set(t.assetId, asset);
   }
+  const releasedTotal = c([...released.values()].reduce((s, asset) => s.plus(asset.amount), ZERO));
 
   const sections: FormSection[] = (['stock', 'etf', 'crypto', 'fx', 'other'] as const).map((id) => {
     const entries: FormEntry[] = [];
@@ -281,19 +286,17 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
       lossTotal = lossTotal.plus(Decimal.max(net.neg(), ZERO)).plus(b.lossB);
       computable = computable.plus(Decimal.max(net.neg(), ZERO));
     }
-    for (const [assetId, amount] of released) {
-      const r = rows.find((x) => x.assetId === assetId);
-      const sample = res.tranches.find((t) => t.assetId === assetId);
-      if ((r?.section ?? (sample?.class === 'etf' || sample?.class === 'fund' ? 'etf' : 'stock')) !== id) continue;
-      entries.push({
-        name: sample?.assetName ?? assetId, assetId, transmission: '0.00', acquisition: '0.00', gain: '0.00',
-        lossObtained: '0.00', lossComputable: c(amount),
-        note: 'Pérdida aplazada de años anteriores que ya cuenta este año.',
-      });
-      computable = computable.plus(amount);
-    }
     return { id, ...SECTION_META[id], entries, gainTotal: c(gainTotal), lossTotal: c(lossTotal), lossComputableTotal: c(computable) };
   }).filter((s) => s.entries.length > 0);
+  if (releasedTotal !== '0.00') {
+    sections.push({
+      id: 'prior_losses', ...SECTION_META.prior_losses,
+      entries: [...released].map(([assetId, { name, amount }]) => ({
+        name, assetId, transmission: '0.00', acquisition: '0.00', gain: '0.00', lossObtained: '0.00', lossComputable: c(amount),
+      })),
+      gainTotal: '0.00', lossTotal: '0.00', lossComputableTotal: releasedTotal,
+    });
+  }
 
   const sum = (pred: (t: string) => boolean) =>
     res.incomes.filter((i) => i.year === year && pred(i.type)).reduce((s, i) => s.plus(D(i.grossEur)), ZERO);
@@ -347,7 +350,6 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
   const generated = res.tranches
     .filter((t) => Number(t.originDate.slice(0, 4)) === year && (t.status === 'blocked' || t.year > year))
     .reduce((s, t) => s.plus(D(t.amountEur)), ZERO);
-  const releasedTotal = [...released.values()].reduce((s, v) => s.plus(v), ZERO);
   const pendingEnd = res.tranches
     .filter((t) => Number(t.originDate.slice(0, 4)) <= year && (t.status === 'blocked' || t.year > year))
     .reduce((s, t) => s.plus(D(t.amountEur)), ZERO);
@@ -364,7 +366,7 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
     doubleTax,
     doubleTaxDeduction: c(doubleTaxDeduction),
     art80Limit: c(art80Limit),
-    deferred: { generated: c(generated), released: c(releasedTotal), pendingEnd: c(pendingEnd), tranches },
+    deferred: { generated: c(generated), released: releasedTotal, pendingEnd: c(pendingEnd), tranches },
     savings: {
       gppBalance: c(comp.gpp), rcmBalance: c(comp.rcm), steps: comp.steps, base: c(base), tax: c(tax),
       avgRate: toStr(avgRate.times(100), 2), brackets,

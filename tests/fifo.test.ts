@@ -120,9 +120,38 @@ describe('Recompra de valores homogéneos (art. 33.5.f)', () => {
     expect(rep25.sections[0]!.lossComputableTotal).toBe('0.00');
     expect(rep25.deferred.generated).toBe('200.00');
     expect(rep25.deferred.tranches[0]?.originYearBlocker).toEqual({ date: '2025-05-15T10:00:00', broker: 'degiro' });
+    expect(rep25.sections.some((s) => s.id === 'prior_losses')).toBe(false);
     const rep26 = buildYearReport(r, DEFAULT_SETTINGS, 2026);
     expect(rep26.deferred.released).toBe('200.00');
+    expect(rep26.sections).toMatchObject([
+      { id: 'stock', entries: [{ gain: '100.00' }], lossComputableTotal: '0.00' },
+      { id: 'prior_losses', boxes: { lossComputable: '0395', sumLoss: '0396' }, lossComputableTotal: '200.00' },
+    ]);
     expect(rep26.savings.gppBalance).toBe('-100.00');
+  });
+
+  it('reserva la casilla 0395 para los importes liberados definitivamente', () => {
+    const stock = { assetId: 'STOCK', assetName: 'Acción de prueba' };
+    const etf = { assetId: 'ETF', assetName: 'ETF de prueba', assetClass: 'etf' } as const;
+    const operations = [
+      trade('buy', '2024-01-10', '10', '10', stock),
+      trade('sell', '2025-03-15', '10', '8', stock),
+      trade('buy', '2025-05-15', '10', '8', stock),
+      trade('sell', '2026-01-15', '5', '9', stock),
+      trade('buy', '2024-01-10', '10', '20', etf),
+      trade('sell', '2025-03-15', '10', '15', etf),
+      trade('buy', '2025-05-15', '10', '15', etf),
+      trade('sell', '2026-01-15', '10', '16', etf),
+    ];
+    const pending = buildYearReport(run(operations, {}, undefined, '2026-02-01'), DEFAULT_SETTINGS, 2026);
+    expect(pending.deferred.released).toBe('0.00');
+    expect(pending.sections.some((s) => s.id === 'prior_losses')).toBe(false);
+
+    const integrated = buildYearReport(run(operations), DEFAULT_SETTINGS, 2026);
+    expect(integrated.deferred).toMatchObject({ released: '60.00', pendingEnd: '10.00' });
+    const section = integrated.sections.find((s) => s.id === 'prior_losses');
+    expect(section?.lossComputableTotal).toBe('60.00');
+    expect(Object.fromEntries(section?.entries.map((e) => [e.assetId, e.lossComputable]) ?? [])).toEqual({ STOCK: '10.00', ETF: '50.00' });
   });
 
   it('la pérdida aplazada conserva las compras de dos brókeres hechas el mismo día', () => {

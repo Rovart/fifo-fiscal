@@ -416,6 +416,21 @@ select.input { appearance: none; padding-right: 32px; background-image: url("dat
 .copy { display: inline-flex; align-items: center; gap: 7px; padding: 3px 8px; margin-right: -8px; border: 0; background: none; border-radius: 8px; cursor: copy; font-weight: 550; font-variant-numeric: tabular-nums; transition: background-color 100ms ease; }
 .copy svg { color: var(--ink-3); }
 .copy.copied svg { color: var(--gain); }
+.deferred-breakdown { display: grid; gap: 8px; margin-top: 14px; }
+.deferred-breakdown .deferred-heading { display: flex; align-items: center; gap: 8px; margin: 0 0 2px; font-size: 14px; font-weight: 650; }
+.deferred-heading svg { flex: none; color: var(--warn); }
+.deferred-sale { overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--r-m); background: var(--surface); }
+.deferred-sale-header, .deferred-purchases li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 9px 12px; }
+.deferred-sale-header { align-items: center; border-bottom: 1px solid var(--hairline); background: var(--surface-2); }
+.deferred-sale-header h4 { margin: 0; font-size: 13px; font-weight: 650; }
+.deferred-value { font-size: 13px; font-weight: 550; text-align: right; }
+.deferred-value .muted { font-size: 11px; font-weight: 400; }
+.deferred-purchases { list-style: none; margin: 0; padding: 0; }
+.deferred-purchases li + li { border-top: 1px solid var(--hairline); }
+.deferred-purchase-date, .deferred-purchase-meta { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px; }
+.deferred-purchase-date { font-size: 13px; font-weight: 550; }
+.deferred-purchase-date span { font-size: 11px; font-weight: 500; color: var(--warn); }
+.deferred-purchase-meta { margin-top: 2px; font-size: 12px; }
 .progress { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
 .progress > div { height: 100%; background: var(--gain); border-radius: 3px; transition: transform 240ms var(--ease-out); transform-origin: left; }
 .mini-table { width: 100%; border-collapse: collapse; font-size: 14px; }

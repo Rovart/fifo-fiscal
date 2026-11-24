@@ -2,7 +2,7 @@ import { AlertCircle, Check, ChevronRight, FileSpreadsheet, FileText, Printer } 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { FormEntry, FormSection, YearReport } from '../../../server/engine/report.ts';
 import { D } from '../../../shared/decimal.ts';
-import { BlockingBuys, groupLosses, type LossGroup } from '../components/DeferredLoss.tsx';
+import { BlockingBuys, DeferredLossBreakdown, groupLosses, type LossGroup } from '../components/DeferredLoss.tsx';
 import { BROKER_LABEL, type Broker, type ForeignFiling, type ForeignForm, type ForeignFormReport, type ForeignReport } from '../../../shared/types.ts';
 import { api } from '../api.ts';
 import { Callout, CopyValue, Disclosure, Empty, Help, LoadError, Loading, NumField, PageHead } from '../components/ui.tsx';
@@ -53,13 +53,15 @@ function Entry({ id, title, box, doneSet, toggle, children }: { id: string; titl
   );
 }
 
-const SECTION_COPY: Record<FormSection['id'], { title: string; hint: string; unit: [string, string] }> = {
+const SECTION_COPY: Record<Exclude<FormSection['id'], 'prior_losses'>, { title: string; hint: string; unit: [string, string] }> = {
   stock: { title: 'Acciones', hint: 'Apartado F2 · una entrada por empresa', unit: ['empresa', 'empresas'] },
   etf: { title: 'ETF', hint: 'Apartado F2 · una entrada por ETF', unit: ['ETF', 'ETF'] },
   crypto: { title: 'Criptomonedas', hint: 'Apartado F2 · una entrada por moneda', unit: ['moneda', 'monedas'] },
   fx: { title: 'Cambios de moneda', hint: 'Apartado F2 · otros elementos, clave 4', unit: ['moneda', 'monedas'] },
   other: { title: 'Otros valores', hint: 'Apartado F2 · otros elementos', unit: ['valor', 'valores'] },
 };
+
+const sectionEntryIds = (s: FormSection) => s.id === 'prior_losses' ? [s.id] : s.entries.map((e, i) => `${s.id}|${e.assetId}|${i}`);
 
 function SectionEntries({ s, blockers, doneSet, toggle }: { s: FormSection; blockers: Map<string, LossGroup[]>; doneSet: Set<string>; toggle: (id: string) => void }) {
   const b = s.boxes;
@@ -84,17 +86,7 @@ function SectionEntries({ s, blockers, doneSet, toggle }: { s: FormSection; bloc
             {withResultBoxes && (nz(e.lossObtained) || onlyLoss) && <BoxRow box={b.lossComputable} label={<span className="inline">Pérdida que cuenta {e.note && !onlyLoss && <Help text={HELP.aplazada} />}</span>} value={e.lossComputable} />}
             {!withResultBoxes && <div className="box-row"><span className="lbl">Resultado</span><span className={`num strong ${signClass(net)}`}>{signed(net)}</span></div>}
             {e.note && <div className="small warn-text" style={{ marginTop: 4 }}>{e.note}</div>}
-            {blockingSales.length > 0 && (
-              <div className="stack" style={{ gap: 6, marginTop: 10 }}>
-                <div className="small strong">Compras que aplazan esta pérdida</div>
-                {blockingSales.map((g) => (
-                  <div key={g.key}>
-                    <div className="small">Venta del {dateShort(g.originDate)} · {eur(g.amount.toFixed(2))} aplazados</div>
-                    <BlockingBuys group={g} showRelease={false} />
-                  </div>
-                ))}
-              </div>
-            )}
+            {blockingSales.length > 0 && <DeferredLossBreakdown sales={blockingSales} />}
           </Entry>
         );
       })}
@@ -128,7 +120,7 @@ export function Renta() {
       return n;
     });
   };
-  if (!rep) return <><PageHead title={`Mi Renta ${year}`} year />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
+  if (!rep || rep.year !== year) return <><PageHead title={`Mi Renta ${year}`} year />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
 
   const rcm = rep.rcm;
   const interestTotal = D(rcm.interest).plus(D(rcm.staking)).toFixed(2);
@@ -153,13 +145,13 @@ export function Renta() {
 
   const allIds = [
     ...(hasRcm ? ['rcm'] : []),
-    ...rep.sections.flatMap((s) => s.entries.map((e, i) => `${s.id}|${e.assetId}|${i}`)),
+    ...rep.sections.flatMap(sectionEntryIds),
     ...(hasRewards ? ['rewards'] : []),
     ...(hasDouble ? ['double'] : []),
   ];
   const doneCount = allIds.filter((id) => doneSet.has(id)).length;
   const errors = rep.issues.filter((i) => i.severity === 'error').length;
-  const sectionDone = (s: FormSection) => s.entries.every((e, i) => doneSet.has(`${s.id}|${e.assetId}|${i}`));
+  const sectionDone = (s: FormSection) => sectionEntryIds(s).every((id) => doneSet.has(id));
   const firstPending = [
     ...(hasRcm && !doneSet.has('rcm') ? ['rcm'] : []),
     ...rep.sections.filter((s) => !sectionDone(s)).map((s) => s.id as string),
@@ -214,6 +206,17 @@ export function Renta() {
             )}
 
             {rep.sections.map((s) => {
+              if (s.id === 'prior_losses') {
+                const amount = s.lossComputableTotal;
+                return (
+                  <Acc key={s.id} title="Pérdidas liberadas de otros años" hint="Apartado F2" done={sectionDone(s)} right={<span className="num strong">{eur(amount)}</span>} {...acc(s.id)}>
+                    <Entry id={s.id} title="Imputación de pérdidas patrimoniales de transmisiones de ejercicios anteriores" doneSet={doneSet} toggle={toggle}>
+                      <BoxRow box={s.boxes.lossComputable} label="Importe a copiar" value={amount} />
+                      {rep.year > 2025 && <div className="small muted">Casilla según el modelo de Renta 2025.</div>}
+                    </Entry>
+                  </Acc>
+                );
+              }
               const c = SECTION_COPY[s.id];
               const n = new Set(s.entries.map((e) => e.assetId)).size;
               const net = D(s.gainTotal).minus(D(s.lossComputableTotal)).toFixed(2);

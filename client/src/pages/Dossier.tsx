@@ -16,7 +16,7 @@ const INCOME: Record<Income['type'], string> = {
   dividend: 'Dividendo', interest: 'Interés', staking: 'Staking', reward: 'Recompensa', capital_excess: 'Devolución de capital', bond: 'Renta fija',
 };
 const FLAG: Record<NonNullable<DossierLot['flag']>, string> = { falta: 'Sin compra', posterior: 'Compra posterior', coste0: 'Coste 0' };
-const SECTION: Record<FormSection['id'], string> = { stock: 'Acciones', etf: 'ETF y fondos', crypto: 'Criptomonedas', fx: 'Divisas', other: 'Otros valores' };
+const SECTION: Record<FormSection['id'], string> = { stock: 'Acciones', etf: 'ETF y fondos', crypto: 'Criptomonedas', fx: 'Divisas', other: 'Otros valores', prior_losses: 'Imputación de pérdidas de ejercicios anteriores' };
 
 function Row({ box, label, value, strong }: { box?: string; label: ReactNode; value: string; strong?: boolean }) {
   return (
@@ -85,7 +85,7 @@ export function Dossier() {
               {rep.sections.map((s) => (
                 <Fragment key={s.id}>
                   {nz(s.gainTotal) && <Row box={s.boxes.sumGain} label={`${SECTION[s.id]} · ganancias`} value={s.gainTotal} />}
-                  {nz(s.lossComputableTotal) && <Row box={s.boxes.sumLoss} label={`${SECTION[s.id]} · pérdidas`} value={s.lossComputableTotal} />}
+                  {nz(s.lossComputableTotal) && <Row box={s.boxes.sumLoss} label={s.id === 'prior_losses' ? SECTION[s.id] : `${SECTION[s.id]} · pérdidas`} value={s.lossComputableTotal} />}
                 </Fragment>
               ))}
               {D(rep.rewards).gt(0) && <Row box="0304" label="Recompensas y airdrops" value={rep.rewards} />}
