@@ -65,7 +65,7 @@ Una sentencia del TSJ del País Vasco de 9 de enero de 2025 [rechaza el FIFO en 
 - Todos los ETF van al bloque 2224-2236. En algún foro se indica que los cotizados en España irían en 0326-0332; si tienes alguno, compruébalo.
 - La pérdida no imputable por recompra se presenta como entrada aparte, con pérdida computable cero.
 - **Comisión de conectividad de DEGIRO**: queda como no deducible por prudencia, porque el art. 26 solo admite administración y depósito. Se puede cambiar por operación.
-- **ETC**: se avisa porque hay doctrina que los lleva a la casilla 0031 (V0267-25, por resumen). Se cambia en Ajustes, en «Mis activos», con el tipo «Renta fija / ETC».
+- **ETC y ETN emitidos como deuda**: su transmisión se incluye en la casilla 0031. El importador identifica por ISIN el [VanEck Bitcoin ETN](https://www.vaneck.com/globalassets/home/ucits/documents/etn-final-terms/vaneck-bitcoin-etn---final-terms.pdf), el [WisdomTree Copper ETC](https://www.wisdomtree.com/gb/products/commodities/wisdomtree-copper) y el [iShares Physical Gold ETC](https://www.ishares.com/gls-download/literature/summary-prospectus/ishares-physical-metals-plc-summary-prospectus-en.pdf). Si el folleto de otro producto confirma que es deuda, se puede elegir «Renta fija / ETC y ETN» en Ajustes.
 - **Doble imposición** (art. 80): por país, el menor de lo retenido y el tipo de convenio (15 % por defecto, editable). El total se limita al tipo medio del ahorro aplicado a esas rentas. El exceso se reclama en origen.
 - **Devolución de capital**: minora el coste y el exceso es capital mobiliario. Se marca para revisar porque si procede de beneficios no distribuidos es dividendo.
 

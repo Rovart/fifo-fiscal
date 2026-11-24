@@ -12,6 +12,7 @@ export interface FormEntry {
   gain: string;
   lossObtained: string;
   lossComputable: string;
+  deferred?: true;
   note?: string;
 }
 
@@ -272,7 +273,8 @@ export function buildYearReport(res: EngineResult, settings: Settings, year: num
       if (!b.lossB.isZero()) {
         entries.push({
           name: b.name, assetId: b.assetId, clave: b.clave, transmission: c(b.tB), acquisition: c(b.aB), gain: '0.00',
-          lossObtained: c(b.lossB), lossComputable: '0.00', note: 'Ponla en una entrada aparte: esta pérdida aún no cuenta porque has recomprado.',
+          lossObtained: c(b.lossB), lossComputable: '0.00', deferred: true,
+          note: 'En Renta WEB, usa una entrada propia para estos importes y marca la opción de no imputar la pérdida por recompra.',
         });
       }
       gainTotal = gainTotal.plus(Decimal.max(net, ZERO));

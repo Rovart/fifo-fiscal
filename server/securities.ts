@@ -8,6 +8,14 @@ export const SECURITIES = [
 ];
 export const securityFor = (id: string) => SECURITIES.find((s) => s.ticker === id.toUpperCase() || s.isin === id.toUpperCase());
 
+const DEBT_ETP_ISINS = new Set([
+  'DE000A28M8D0', // VanEck Bitcoin ETN
+  'GB00B15KXQ89', // WisdomTree Copper ETC
+  'IE00B4ND3602', // iShares Physical Gold ETC
+]);
+
+export const isVerifiedExchangeTradedDebt = (isin: string): boolean => DEBT_ETP_ISINS.has(isin.toUpperCase());
+
 export function compatiblePriceSymbol(assetId: string, symbol: string | null | undefined): boolean {
   const verified = securityFor(assetId);
   return !verified || (typeof symbol === 'string' && verified.symbols.includes(symbol));

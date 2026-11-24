@@ -63,7 +63,7 @@ const SYMBOLS: Record<string, string> = { EUR: '€', USD: '$', GBP: '£', JPY: 
 export const symbol = (c: string | null | undefined): string => SYMBOLS[c ?? ''] ?? (c ?? '');
 
 const SPECIAL: Record<string, string> = { ISHARES: 'iShares', XTRACKERS: 'Xtrackers', VANECK: 'VanEck', WISDOMTREE: 'WisdomTree', HANETF: 'HANetf', 'JPMORGAN': 'JPMorgan', 'BLACKROCK': 'BlackRock' };
-const KEEP_UPPER = new Set(['ASML', 'IBM', 'AMD', 'BMW', 'SAP', 'BBVA', 'ING', 'AXA', 'CAF', 'ACS', 'UBS', 'BNP', 'TSMC', 'LVMH', 'NXP', 'ETF', 'ETC', 'UCITS', 'MSCI', 'S&P', 'SA', 'AG', 'NV', 'SE', 'PLC', 'ACC', 'DIST', 'USD', 'EUR', 'GBP', 'ADR', 'SPDR', 'NASDAQ', 'FTSE', 'REIT', 'AB', 'ASA', 'BV', 'II', 'III', 'IV']);
+const KEEP_UPPER = new Set(['ASML', 'IBM', 'AMD', 'BMW', 'SAP', 'BBVA', 'ING', 'AXA', 'CAF', 'ACS', 'UBS', 'BNP', 'TSMC', 'LVMH', 'NXP', 'ETF', 'ETC', 'ETN', 'UCITS', 'MSCI', 'S&P', 'SA', 'AG', 'NV', 'SE', 'PLC', 'ACC', 'DIST', 'USD', 'EUR', 'GBP', 'ADR', 'SPDR', 'NASDAQ', 'FTSE', 'REIT', 'AB', 'ASA', 'BV', 'II', 'III', 'IV']);
 const titleWord = (w: string): string => {
   const clean = w.replace(/[.,()]/g, '');
   if (SPECIAL[clean]) return SPECIAL[clean] as string;

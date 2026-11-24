@@ -176,7 +176,7 @@ export function parseDegiroTransactions(headers: string[], rawRows: string[][], 
       op.feesInEur = true;
     }
     if (!p.orderId) review(op, 'No tiene número de orden: puede ser una operación de la empresa, no una compra o venta tuya.');
-    if (etc) review(op, 'Parece un ETC: puede ir en otra casilla. Si lo es, cambia su clase en Ajustes.');
+    if (etc && op.assetClass !== 'bond') review(op, 'Parece un ETC o ETN. Si el folleto confirma que es deuda, elige «Renta fija / ETC y ETN» en Ajustes.');
     markets[p.isin] = marketOf(p.exchange);
     ops.push(op);
   }

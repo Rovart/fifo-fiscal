@@ -111,7 +111,7 @@ describe('Recompra de valores homogéneos (art. 33.5.f)', () => {
     const r = run([
       trade('buy', '2024-01-10', '100', '10'),
       trade('sell', '2025-03-15', '100', '8'),
-      trade('buy', '2025-05-15', '100', '8'),
+      trade('buy', '2025-05-15', '100', '8', { broker: 'degiro' }),
       trade('sell', '2026-01-15', '100', '9'),
     ]);
     expect(statuses(r)).toEqual([['integrated', 200]]);
@@ -119,9 +119,25 @@ describe('Recompra de valores homogéneos (art. 33.5.f)', () => {
     const rep25 = buildYearReport(r, DEFAULT_SETTINGS, 2025);
     expect(rep25.sections[0]!.lossComputableTotal).toBe('0.00');
     expect(rep25.deferred.generated).toBe('200.00');
+    expect(rep25.deferred.tranches[0]?.originYearBlocker).toEqual({ date: '2025-05-15T10:00:00', broker: 'degiro' });
     const rep26 = buildYearReport(r, DEFAULT_SETTINGS, 2026);
     expect(rep26.deferred.released).toBe('200.00');
     expect(rep26.savings.gppBalance).toBe('-100.00');
+  });
+
+  it('la pérdida aplazada conserva las compras de dos brókeres hechas el mismo día', () => {
+    const r = run([
+      trade('buy', '2024-01-10', '10', '100'),
+      trade('sell', '2025-03-15', '10', '80'),
+      trade('buy', '2025-04-04', '4', '80', { broker: 'trade_republic' }),
+      trade('buy', '2025-04-04', '6', '80', { broker: 'degiro' }),
+    ]);
+    const report = buildYearReport(r, DEFAULT_SETTINGS, 2025);
+    expect(report.sections[0]?.entries).toMatchObject([{ lossObtained: '200.00', lossComputable: '0.00', deferred: true }]);
+    expect(report.deferred.tranches).toMatchObject([
+      { originDate: '2025-03-15', blockerDate: '2025-04-04T10:00:00', blockerBroker: 'trade_republic', quantity: '4', amountEur: '80' },
+      { originDate: '2025-03-15', blockerDate: '2025-04-04T10:00:00', blockerBroker: 'degiro', quantity: '6', amountEur: '120' },
+    ]);
   });
 
   it('un día después del plazo no bloquea', () => {

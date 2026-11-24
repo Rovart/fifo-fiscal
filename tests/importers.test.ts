@@ -20,6 +20,20 @@ const assertBalanced = (ops: ReturnType<typeof parseFile>['ops']) => {
 };
 
 describe('DEGIRO', () => {
+  it('identifica ETC y ETN de deuda por ISIN y conserva el aviso para productos sin confirmar', () => {
+    const p = parseFile([
+      'Date,Time,Product,ISIN,Quantity,Price,,Local value,,Value EUR,Total EUR,Order ID',
+      '01-02-2026,12:00,VanEck Bitcoin ETN,DE000A28M8D0,10,10,EUR,-100,EUR,-100,-100,order1',
+      '01-03-2026,12:00,VanEck Bitcoin ETN,DE000A28M8D0,-10,12,EUR,120,EUR,120,120,order2',
+      '01-02-2026,12:00,WisdomTree Copper ETC,GB00B15KXQ89,10,10,EUR,-100,EUR,-100,-100,order3',
+      '01-03-2026,12:00,WisdomTree Copper ETC,GB00B15KXQ89,-10,13,EUR,130,EUR,130,130,order4',
+      '01-02-2026,12:00,Producto ETN sin confirmar,DE0000000001,10,10,EUR,-100,EUR,-100,-100,order5',
+    ].join('\n'), rate);
+    expect(p.ops.slice(0, 4).every((o) => o.assetClass === 'bond' && !o.reviewReasons?.length)).toBe(true);
+    expect(p.ops[4]).toMatchObject({ assetClass: 'other', reviewReasons: [expect.stringContaining('ETC o ETN')] });
+    expect(run(p.ops).incomes).toMatchObject([{ type: 'bond', grossEur: '20' }, { type: 'bond', grossEur: '30' }]);
+  });
+
   it('Transactions en español con moneda en columnas sin nombre', () => {
     const p = parseFile(fx('degiro_transactions_es.csv'), rate);
     expect(p.format).toBe('Transactions');

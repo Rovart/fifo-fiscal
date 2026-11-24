@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { D, Decimal, cents, isNum, parseLocaleNumber, toStr } from '../../shared/decimal.ts';
 import type { AssetClass, Broker, Market, OpKind, Operation } from '../../shared/types.ts';
 import { utcToMadrid } from '../engine/dates.ts';
+import { isVerifiedExchangeTradedDebt } from '../securities.ts';
 
 export type RateFn = (currency: string, date: string) => Decimal | null;
 
@@ -54,7 +55,8 @@ export const baseOp = (p: {
   currency?: string; sourceKey: string; note?: string;
 }): Operation => ({
   id: randomUUID(), broker: p.broker, kind: p.kind, datetime: p.datetime, assetId: p.assetId, assetName: p.assetName,
-  assetClass: p.assetClass, quantity: null, unitPrice: null, currency: p.currency ?? 'EUR', fxRate: p.currency && p.currency !== 'EUR' ? null : '1',
+  assetClass: isVerifiedExchangeTradedDebt(p.assetId) ? 'bond' : p.assetClass,
+  quantity: null, unitPrice: null, currency: p.currency ?? 'EUR', fxRate: p.currency && p.currency !== 'EUR' ? null : '1',
   grossLocal: null, grossEur: null, feeEur: '0', otherCostsEur: '0', withholdingEur: '0', totalEur: null, settleCurrency: 'EUR',
   sourceKey: p.sourceKey, note: p.note, reviewReasons: [],
 });

@@ -12,7 +12,7 @@ import { isZeroPosition } from '../holdings.ts';
 
 const GROUPS: { id: DisposalClass; label: string }[] = [
   { id: 'stock', label: 'Acciones' }, { id: 'etf', label: 'ETF' }, { id: 'fund', label: 'Fondos' }, { id: 'crypto', label: 'Criptomonedas' },
-  { id: 'bond', label: 'Renta fija y ETC' }, { id: 'other', label: 'Otros' }, { id: 'fx', label: 'Monedas' },
+  { id: 'bond', label: 'Renta fija, ETC y ETN' }, { id: 'other', label: 'Otros' }, { id: 'fx', label: 'Monedas' },
 ];
 
 const brokerName = (b: string) => (b === 'externo' ? 'Fuera de los brókers' : BROKER_LABEL[b as Broker] ?? b);

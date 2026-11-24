@@ -2,7 +2,7 @@ import { AlertCircle, Check, ChevronRight, FileSpreadsheet, FileText, Printer } 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { FormEntry, FormSection, YearReport } from '../../../server/engine/report.ts';
 import { D } from '../../../shared/decimal.ts';
-import { BlockingBuys, groupLosses } from '../components/DeferredLoss.tsx';
+import { BlockingBuys, groupLosses, type LossGroup } from '../components/DeferredLoss.tsx';
 import { BROKER_LABEL, type Broker, type ForeignFiling, type ForeignForm, type ForeignFormReport, type ForeignReport } from '../../../shared/types.ts';
 import { api } from '../api.ts';
 import { Callout, CopyValue, Disclosure, Empty, Help, LoadError, Loading, NumField, PageHead } from '../components/ui.tsx';
@@ -61,7 +61,7 @@ const SECTION_COPY: Record<FormSection['id'], { title: string; hint: string; uni
   other: { title: 'Otros valores', hint: 'Apartado F2 · otros elementos', unit: ['valor', 'valores'] },
 };
 
-function SectionEntries({ s, doneSet, toggle }: { s: FormSection; doneSet: Set<string>; toggle: (id: string) => void }) {
+function SectionEntries({ s, blockers, doneSet, toggle }: { s: FormSection; blockers: Map<string, LossGroup[]>; doneSet: Set<string>; toggle: (id: string) => void }) {
   const b = s.boxes;
   const withResultBoxes = s.id === 'stock' || s.id === 'etf' || s.id === 'crypto';
   return (
@@ -71,6 +71,7 @@ function SectionEntries({ s, doneSet, toggle }: { s: FormSection; doneSet: Set<s
         const name = niceName(e.name);
         const net = D(e.gain).minus(D(e.lossObtained)).toFixed(2);
         const onlyLoss = !nz(e.transmission) && !nz(e.acquisition);
+        const blockingSales = e.deferred ? blockers.get(e.assetId) ?? [] : [];
         return (
           <Entry key={id} id={id} doneSet={doneSet} toggle={toggle} box={b.name} title={<CopyValue value={name} display={name} text />}>
             {s.id === 'crypto' && e.clave && (
@@ -83,6 +84,17 @@ function SectionEntries({ s, doneSet, toggle }: { s: FormSection; doneSet: Set<s
             {withResultBoxes && (nz(e.lossObtained) || onlyLoss) && <BoxRow box={b.lossComputable} label={<span className="inline">Pérdida que cuenta {e.note && !onlyLoss && <Help text={HELP.aplazada} />}</span>} value={e.lossComputable} />}
             {!withResultBoxes && <div className="box-row"><span className="lbl">Resultado</span><span className={`num strong ${signClass(net)}`}>{signed(net)}</span></div>}
             {e.note && <div className="small warn-text" style={{ marginTop: 4 }}>{e.note}</div>}
+            {blockingSales.length > 0 && (
+              <div className="stack" style={{ gap: 6, marginTop: 10 }}>
+                <div className="small strong">Compras que aplazan esta pérdida</div>
+                {blockingSales.map((g) => (
+                  <div key={g.key}>
+                    <div className="small">Venta del {dateShort(g.originDate)} · {eur(g.amount.toFixed(2))} aplazados</div>
+                    <BlockingBuys group={g} showRelease={false} />
+                  </div>
+                ))}
+              </div>
+            )}
           </Entry>
         );
       })}
@@ -125,6 +137,19 @@ export function Renta() {
   const hasRewards = D(rep.rewards).gt(0);
   const hasDouble = rep.doubleTax.length > 0;
   const nothing = !hasRcm && rep.sections.length === 0 && !hasRewards;
+  const losses = groupLosses(rep.deferred.tranches);
+  const blockers = new Map<string, LossGroup[]>();
+  const purchasesAtFiling = rep.deferred.tranches.flatMap((t) => {
+    if (Number(t.originDate.slice(0, 4)) !== rep.year || (t.status !== 'blocked' && t.year <= rep.year)) return [];
+    const date = t.originYearBlocker?.date ?? t.blockerDate;
+    const broker = t.originYearBlocker ? t.originYearBlocker.broker : t.blockerBroker;
+    return date ? [{ ...t, status: 'blocked' as const, blockerDate: date, blockerBroker: broker }] : [];
+  });
+  for (const loss of groupLosses(purchasesAtFiling).sort((a, b) => a.originDate.localeCompare(b.originDate))) {
+    const assetLosses = blockers.get(loss.assetId) ?? [];
+    assetLosses.push(loss);
+    blockers.set(loss.assetId, assetLosses);
+  }
 
   const allIds = [
     ...(hasRcm ? ['rcm'] : []),
@@ -181,7 +206,7 @@ export function Renta() {
                 <Entry id="rcm" title="Capital mobiliario" doneSet={doneSet} toggle={toggle}>
                   {nz(interestTotal) && <BoxRow box="0027" label={nz(rcm.staking) ? 'Intereses y staking' : 'Intereses'} value={interestTotal} />}
                   {nz(dividendTotal) && <BoxRow box="0029" label="Dividendos" value={dividendTotal} />}
-                  {nz(rcm.bonds) && <BoxRow box="0031" label="Transmisión de activos financieros" value={rcm.bonds} />}
+                  {nz(rcm.bonds) && <BoxRow box="0031" label={<span className="inline">Transmisión de activos financieros <Help text="Incluye la transmisión de bonos y de ETC y ETN emitidos como deuda." /></span>} value={rcm.bonds} />}
                   {nz(rcm.custody) && <BoxRow box="0037" label="Gastos de custodia" value={rcm.custody} />}
                   {nz(rcm.spanishTax) && <BoxRow box="0597" label={<span className="inline">Retenciones en España <Help text={HELP.retencion} /></span>} value={rcm.spanishTax} />}
                 </Entry>
@@ -194,7 +219,7 @@ export function Renta() {
               const net = D(s.gainTotal).minus(D(s.lossComputableTotal)).toFixed(2);
               return (
                 <Acc key={s.id} title={c.title} hint={`${c.hint} · ${n} ${n === 1 ? c.unit[0] : c.unit[1]}`} done={sectionDone(s)} right={<span className={`num strong ${signClass(net)}`}>{signed(net)}</span>} {...acc(s.id)}>
-                  <SectionEntries s={s} doneSet={doneSet} toggle={toggle} />
+                  <SectionEntries s={s} blockers={blockers} doneSet={doneSet} toggle={toggle} />
                 </Acc>
               );
             })}
@@ -235,7 +260,7 @@ export function Renta() {
           {rep.deferred.tranches.length > 0 && (
             <Disclosure card flush title={<span className="inline">Pérdidas aplazadas <Help text={HELP.aplazada} /></span>} meta={<span className="num strong">{eur(rep.deferred.pendingEnd)}</span>}>
               <div className="list">
-                {groupLosses(rep.deferred.tranches).map((g) => (
+                {losses.map((g) => (
                   <div className="item" key={g.key}>
                     <div className="main-col">
                       <div className="title">{niceName(g.assetName)}</div>

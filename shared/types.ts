@@ -247,6 +247,9 @@ export interface LossTranche {
   windowEnd: string;
   blockerLotId?: string;
   blockerDate?: string;
+  blockerBroker?: Broker;
+  /** Compra que seguía bloqueando al cierre del ejercicio de origen y ya se vendió. */
+  originYearBlocker?: { date: string; broker?: Broker };
   /** Títulos que se venderán antes de llegar a los que liberan esta pérdida. */
   aheadQty?: string;
 }
@@ -443,7 +446,7 @@ export interface FifoHistory {
 }
 
 export const CLASS_LABEL: Record<DisposalClass, string> = {
-  stock: 'Acción', etf: 'ETF', fund: 'Fondo', crypto: 'Cripto', bond: 'Renta fija / ETC', other: 'Otro', fx: 'Divisa',
+  stock: 'Acción', etf: 'ETF', fund: 'Fondo', crypto: 'Cripto', bond: 'Renta fija / ETC y ETN', other: 'Otro', fx: 'Divisa',
 };
 export const KIND_LABEL: Record<OpKind, string> = {
   buy: 'Compra', sell: 'Venta', swap: 'Cambio de cripto', fx: 'Cambio de moneda', dividend: 'Dividendo',

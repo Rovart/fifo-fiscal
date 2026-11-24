@@ -50,6 +50,7 @@ interface Tranche {
   amount: Decimal;
   date: string;
   windowEnd: string;
+  originYearBlocker?: LossTranche['originYearBlocker'];
 }
 
 interface AssetBook {
@@ -160,7 +161,9 @@ export function runEngine(input: EngineInput): EngineResult {
       originDisposalId: t.originDisposalId, originDate: t.originDate,
       quantity: toStr(t.qty, 10), amountEur: toStr(t.amount, 6), status,
       date: t.date, year: yearOf(t.date), windowEnd: t.windowEnd,
-      blockerLotId: blocker?.id, blockerDate: blocker?.date, aheadQty: ahead && toStr(ahead, 10),
+      blockerLotId: blocker?.id, blockerDate: blocker?.date, blockerBroker: blocker?.opId ? brokerOfOp.get(blocker.opId) : undefined,
+      originYearBlocker: t.originYearBlocker,
+      aheadQty: ahead && toStr(ahead, 10),
     });
   };
 
@@ -284,7 +287,11 @@ export function runEngine(input: EngineInput): EngineResult {
         const part = block.qty.eq(r) ? block.tranche : splitTranche(block.tranche, r);
         block.qty = block.qty.minus(r);
         if (block.qty.isZero()) lot.blocks.shift();
-        released.push({ ...part, date, windowEnd: date });
+        const releasedPart = { ...part, date, windowEnd: date };
+        if (yearOf(date) > yearOf(part.originDate)) {
+          releasedPart.originYearBlocker ??= { date: lot.date, broker: lot.opId ? brokerOfOp.get(lot.opId) : undefined };
+        }
+        released.push(releasedPart);
         toRelease = toRelease.minus(r);
       }
       lot.qty = lot.qty.minus(take);
