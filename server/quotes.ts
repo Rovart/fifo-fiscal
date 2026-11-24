@@ -1,4 +1,5 @@
 import YahooFinance from 'yahoo-finance2';
+import { OAT_2035, oatPrices } from './bond-prices.ts';
 import { securityFor } from './securities.ts';
 import { D, type Decimal } from '../shared/decimal.ts';
 import { db, listAssets, rateAt } from './db.ts';
@@ -66,7 +67,7 @@ const toEur = (price: Decimal, currency: string): Decimal | null => {
   return r ? price.div(r) : null;
 };
 
-/** Solo se envían a Yahoo ISIN y símbolos, nunca cantidades ni importes. */
+/** A los proveedores solo se envían ISIN y símbolos. */
 export async function refreshQuotes() {
   await refreshEcbRates().catch(() => null);
   const positions = engine().positions.filter((p) => p.class !== 'fx' && D(p.quantity).gt(0));
@@ -81,6 +82,12 @@ export async function refreshQuotes() {
     for (let p = queue.shift(); p; p = queue.shift()) {
       const klass = assets.get(p.assetId)?.class ?? p.class;
       const cached = known[p.assetId];
+      if (p.assetId === OAT_2035.isin) {
+        const latest = (await oatPrices('1M', today()).catch(() => [])).at(-1);
+        if (latest) save.run(p.assetId, 'Euronext MOT', 'EUR', latest.price.toFixed(8), latest.price.toFixed(8), latest.date, now);
+        else missing.push(p.assetName);
+        continue;
+      }
       const candidates = [...new Set([
         ...(cached?.priceEur && cached.symbol && cached.symbol !== 'Kraken' ? [cached.symbol] : []),
         ...await symbolCandidates(p.assetId, p.assetName, klass),

@@ -273,6 +273,23 @@ describe('Trade Republic: formato real', () => {
   it('los intereses con el 19 % son retención española', () => {
     expect(byKey(1)).toMatchObject({ kind: 'interest', withholdingEur: '0.38', spanishTaxEur: '0.38', reviewReasons: [] });
   });
+  it('cuadra compras y ventas de bonos cuyo importe incluye el cupón corrido', () => {
+    const { ops } = parseFile([
+      'date,category,type,asset_class,name,symbol,shares,price,amount,fee,tax,currency,transaction_id',
+      '2026-01-19,TRADING,BUY,BOND,Bono de ejemplo,FR0000000001,0.78,1.0032,-0.80,,,EUR,bond-fraction',
+      '2026-01-19,TRADING,BUY,BOND,Bono de ejemplo,FR0000000001,5820,1.0032,-5999.19,-1,,EUR,bond-buy',
+      '2026-03-10,TRADING,SELL,BOND,Bono de ejemplo,FR0000000001,-5820,1.01,6050.00,-1,,EUR,bond-sell',
+    ].join('\n'), rate);
+    expect(ops).toMatchObject([
+      { kind: 'buy', assetClass: 'bond', quantity: '0.78', grossEur: '0.80', totalEur: '0.80', reviewReasons: [] },
+      { kind: 'buy', assetClass: 'bond', quantity: '5820', grossEur: '5999.19', feeEur: '1.00', totalEur: '6000.19', reviewReasons: [] },
+      { kind: 'sell', assetClass: 'bond', quantity: '5820', grossEur: '6050.00', feeEur: '1.00', totalEur: '6049.00', reviewReasons: [] },
+    ]);
+    assertBalanced(ops);
+    const result = run(ops);
+    expect(result.issues).toEqual([]);
+    expect(result.incomes).toMatchObject([{ type: 'bond', assetId: 'FR0000000001' }]);
+  });
 });
 
 describe('Kraken: formato real', () => {

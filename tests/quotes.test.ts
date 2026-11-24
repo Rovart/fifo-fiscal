@@ -38,6 +38,21 @@ describe('Identificación y precios por bolsa', () => {
     await refreshQuotes();
     expect(storedQuotes()['TEST.L']).toMatchObject({ currency: 'GBP', price: '8', priceEur: '10.00000000' });
   });
+  it('valora el OAT en euros por unidad nominal con el cupón corrido', async () => {
+    mocks.engine.mockReturnValue({ positions: [{ assetId: 'FR0010070060', assetName: 'Apr. 2035', class: 'bond', quantity: '5820.78' }] });
+    const fetch = vi.fn(async () => Response.json([
+      { time: '2026-11-03 01:00', price: 100.5 },
+      { time: '2026-11-04 01:00', price: 110 },
+      { time: '2026-11-02 01:00', price: 100 },
+    ]));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      expect(await refreshQuotes()).toMatchObject({ updated: 1, missing: [] });
+      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/FR0010070060-MOTX/1M'), expect.anything());
+      expect(mocks.search).not.toHaveBeenCalled();
+      expect(storedQuotes().FR0010070060).toMatchObject({ symbol: 'Euronext MOT', currency: 'EUR', priceEur: '1.02998630', at: '2026-11-03' });
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('una cripto que Yahoo solo cotiza en dólares, como stETH, se pasa a euros al cambio del BCE', async () => {
     insertRates([{ date: '2026-11-03', currency: 'USD', rate: '1.25' }]);
     mocks.engine.mockReturnValue({ positions: [{ assetId: 'STETH', assetName: 'Lido Staked ETH', class: 'crypto', quantity: '1' }] });

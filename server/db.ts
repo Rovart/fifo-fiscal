@@ -6,7 +6,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { D, type Decimal } from '../shared/decimal.ts';
 import { DEFAULT_SETTINGS, type Asset, type Operation, type Profile, type Settings } from '../shared/types.ts';
-import { migrateNetworkFees } from './migrations.ts';
+import { migrateNetworkFees, migrateTradeRepublicBonds } from './migrations.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const DB_PATH = process.env.FIFO_DB ?? join(here, '..', 'data', 'fifo.db');
@@ -65,6 +65,7 @@ database.exec(`
   }
   database.exec('INSERT OR IGNORE INTO import_operations (import_id, op_id) SELECT import_id, id FROM operations WHERE import_id IN (SELECT id FROM imports)');
   migrateNetworkFees(database);
+  migrateTradeRepublicBonds(database);
 }
 initialize(mainDb);
 mainDb.exec('CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL)');

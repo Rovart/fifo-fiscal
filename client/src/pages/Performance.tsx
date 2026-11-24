@@ -116,7 +116,7 @@ export function Performance() {
         {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
         <div className="card">
           <Empty icon={TrendingUp} title="Faltan los precios de cada mes">
-            <p className="small muted" style={{ marginBottom: 12 }}>Se piden a Yahoo. Solo se envían ISIN y símbolos, nunca tus cantidades.</p>
+            <p className="small muted" style={{ marginBottom: 12 }}>Se consultan precios públicos por ISIN o símbolo.</p>
             {button}
           </Empty>
         </div>

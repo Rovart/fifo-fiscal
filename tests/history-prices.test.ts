@@ -25,6 +25,23 @@ describe('Cobertura del histórico de precios', () => {
     await refreshPriceHistory();
     expect(db.prepare('SELECT symbol FROM price_symbols WHERE asset_id = ?').get('EURO')).toMatchObject({ symbol: 'EURO.DE' });
   });
+  it('guarda como cierre del OAT su última cotización válida del mes con cupón corrido', async () => {
+    const assetId = 'FR0010070060';
+    putOp(trade('buy', '2025-12-11', '100', '1', { assetId, assetName: 'Apr. 2035', assetClass: 'bond' }));
+    const fetch = vi.fn(async () => Response.json([
+      { time: '2025-12-31 01:00', price: 100.75 },
+      { time: '2025-11-28 01:00', price: 100.25 },
+      { time: '2025-12-29 01:00', price: 100.5 },
+      { time: '2025-12-32 01:00', price: 120 },
+    ]));
+    vi.stubGlobal('fetch', fetch);
+    try {
+      expect(await refreshPriceHistory()).toMatchObject({ assets: 1, missing: [] });
+      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/FR0010070060-MOTX/max'), expect.anything());
+      expect(mocks.chart).not.toHaveBeenCalled();
+      expect(db.prepare('SELECT month, price_eur FROM price_history WHERE asset_id = ?').all(assetId)).toEqual([{ month: '2025-12', price_eur: '1.04003425' }]);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('completa con Kraken los meses de cripto sin precio en Yahoo y recuerda los que no tienen operaciones', async () => {
     db.exec('DELETE FROM price_gaps');
     putOp(trade('buy', '2016-06-10', '1', '10', { assetId: 'ETH', assetName: 'Ethereum', assetClass: 'crypto', broker: 'kraken' }));

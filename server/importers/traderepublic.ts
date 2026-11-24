@@ -85,8 +85,9 @@ export function parseTradeRepublic(headers: string[], rows: string[][], rate: Ra
       const qty = shares.abs();
       const absAmount = amount?.abs() ?? null;
       const gross = price ? qty.times(price) : absAmount;
-      // Según la exportación, `amount` puede venir sin comisión o con ella: se admite lo que cuadre.
-      const amountIsGross = absAmount && gross ? absAmount.minus(gross).abs().lte('0.02') : true;
+      // En bonos, `amount` incluye el cupón corrido. `price` es la cotización sin ese interés.
+      // En los demás activos, `amount` puede venir con o sin comisión según la exportación.
+      const amountIsGross = klass === 'bond' || !absAmount || !gross || absAmount.minus(gross).abs().lte('0.02');
       const grossLocal = amountIsGross ? (absAmount ?? gross) : gross;
       // En una compra, es un tributo de la operación (ITF español, TTF francés): forma parte del coste.
       const buyTax = kind === 'buy' && tax ? tax.abs() : ZERO;
@@ -94,7 +95,6 @@ export function parseTradeRepublic(headers: string[], rows: string[][], rate: Ra
       if (kind === 'sell' && tax && !tax.isZero()) {
         review(op, 'Trade Republic indica un impuesto en esta venta. Comprueba si es una retención.');
       }
-      if (klass === 'bond') review(op, 'Renta fija: tributa como rendimiento (casilla 0031), no como venta de acciones.');
       ops.push(op);
       continue;
     }

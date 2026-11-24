@@ -91,7 +91,7 @@ export function Portfolio() {
 
   return (
     <>
-      <PageHead title="Cartera" sub={fetched ? `Precios de Yahoo del ${new Date(fetched).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}` : undefined}>
+      <PageHead title="Cartera" sub={fetched ? `Precios consultados el ${new Date(fetched).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}` : undefined}>
         {zeroCount > 0 && (
           <label className="inline small muted">
             Saldos a cero ({zeroCount})

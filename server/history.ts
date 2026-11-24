@@ -2,6 +2,7 @@ import { D, Decimal, ZERO, cents } from '../shared/decimal.ts';
 import type { PerformanceData } from '../shared/types.ts';
 import { fifoOperations } from '../shared/fifo-start.ts';
 import { db, allOps, getSettings, rateAt } from './db.ts';
+import { OAT_2035, oatPrices } from './bond-prices.ts';
 import { nextMonth } from './engine/dates.ts';
 import { runEngine } from './engine/fifo.ts';
 import { computePerformance } from './engine/performance.ts';
@@ -75,7 +76,7 @@ async function backfillFromKraken(ranges: Map<string, { klass: string; months: S
   }
 }
 
-/** Solo se envían a Yahoo ISIN y símbolos, nunca cantidades ni importes. */
+/** A los proveedores solo se envían ISIN y símbolos. */
 export async function refreshPriceHistory() {
   await refreshQuotes().catch(() => null);
   const { res } = monthlyEngine();
@@ -94,12 +95,21 @@ export async function refreshPriceHistory() {
   const saveSymbol = db.prepare('INSERT INTO price_symbols (asset_id, symbol, fetched_at) VALUES (?, ?, ?) ON CONFLICT(asset_id) DO UPDATE SET symbol = excluded.symbol, fetched_at = excluded.fetched_at');
   const savePrice = db.prepare('INSERT INTO price_history (asset_id, month, price_eur) VALUES (?, ?, ?) ON CONFLICT(asset_id, month) DO UPDATE SET price_eur = excluded.price_eur');
   const now = new Date().toISOString();
+  const asOf = today();
   const missing: string[] = [];
   const queue = [...ranges.entries()];
 
   const work = async () => {
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [assetId, r] = next;
+      if (assetId === OAT_2035.isin) {
+        const prices = await oatPrices(r.from === asOf.slice(0, 7) ? '1M' : 'max', asOf).catch(() => []);
+        const closes = new Map(prices.map(({ date, price }) => [date.slice(0, 7), price]));
+        for (const [month, price] of closes) if (r.months.has(month)) savePrice.run(assetId, month, price.toFixed(8));
+        if ([...r.months].some((month) => closes.has(month))) saveSymbol.run(assetId, OAT_2035.symbol, now);
+        else if (!storedQuotes()[assetId]?.priceEur) missing.push(r.name);
+        continue;
+      }
       const remembered = known.get(assetId);
       const candidates = [...new Set([...(remembered ? [remembered] : []), ...await symbolCandidates(assetId, r.name, r.klass)])];
       // Un nombre puede dar otra clase del mismo fondo: el precio debe parecerse al de tu primera compra.
