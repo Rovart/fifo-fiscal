@@ -31,7 +31,9 @@ describe('DEGIRO', () => {
     ].join('\n'), rate);
     expect(p.ops.slice(0, 4).every((o) => o.assetClass === 'bond' && !o.reviewReasons?.length)).toBe(true);
     expect(p.ops[4]).toMatchObject({ assetClass: 'other', reviewReasons: [expect.stringContaining('ETC o ETN')] });
-    expect(run(p.ops).incomes).toMatchObject([{ type: 'bond', grossEur: '20' }, { type: 'bond', grossEur: '30' }]);
+    // Las dos ventas son a la misma hora y el motor desempata por id, que el importador genera al azar.
+    const incomes = run(p.ops).incomes.sort((a, b) => Number(a.grossEur) - Number(b.grossEur));
+    expect(incomes).toMatchObject([{ type: 'bond', grossEur: '20' }, { type: 'bond', grossEur: '30' }]);
   });
 
   it('Transactions en español con moneda en columnas sin nombre', () => {

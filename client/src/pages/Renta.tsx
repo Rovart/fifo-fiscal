@@ -2,6 +2,7 @@ import { AlertCircle, Check, ChevronRight, FileSpreadsheet, FileText, Printer } 
 import { useEffect, useState, type ReactNode } from 'react';
 import type { FormEntry, FormSection, YearReport } from '../../../server/engine/report.ts';
 import { D } from '../../../shared/decimal.ts';
+import { AeatFile, RentaFile } from '../components/AeatFile.tsx';
 import { BlockingBuys, DeferredLossBreakdown, groupLosses, type LossGroup } from '../components/DeferredLoss.tsx';
 import { BROKER_LABEL, type Broker, type ForeignFiling, type ForeignForm, type ForeignFormReport, type ForeignReport } from '../../../shared/types.ts';
 import { api } from '../api.ts';
@@ -259,6 +260,8 @@ export function Renta() {
             )}
           </div>
 
+          <RentaFile year={year} />
+
           <h2 style={{ marginTop: 8 }}>Para saber más</h2>
           {rep.deferred.tranches.length > 0 && (
             <Disclosure card flush title={<span className="inline">Pérdidas aplazadas <Help text={HELP.aplazada} /></span>} meta={<span className="num strong">{eur(rep.deferred.pendingEnd)}</span>}>
@@ -442,6 +445,7 @@ function ForeignRow({ f, year, estimated, filings, save }: { f: ForeignFormRepor
               {error && <span className="small loss">{error}</span>}
             </div>
           )}
+          {!estimated && <AeatFile f={f} year={year} />}
         </div>
       )}
     </div>

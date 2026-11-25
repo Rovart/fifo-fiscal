@@ -171,7 +171,31 @@ Cartera y «¿Y si vendo?» usan precios de Yahoo Finance mediante la librería 
 
 ## Modelos 720 y 721
 
-Se muestra la posición a 31 de diciembre con su coste y un aviso si supera 50.000 €. El umbral real va por valor de mercado, que la aplicación no conoce para acciones: compruébalo aparte.
+Se valora la posición a 31 de diciembre con el cierre de diciembre de cada activo (sin cierre, con su coste) y se avisa la primera vez que supera 50.000 €, cuando sube más de 20.000 € desde el último presentado o cuando se cierra algo ya declarado.
+
+### Ficheros para la sede
+
+- **720.** Fichero de texto con el [diseño de registro de la AEAT](https://www3.agenciatributaria.gob.es/static_files/Sede/Disenyo_registro/DR_Resto_Mod/archivos/modelo_720.pdf): 500 posiciones por registro, ISO-8859-1, mayúsculas sin acentos. Se sube en «Presentación mediante fichero»; el paso «Validar» solo comprueba y no presenta.
+  - Acciones: clave V, subclave 1. Renta fija, ETC y ETN: V, subclave 2. ETF y fondos: clave I, sin subclave. Se identifican por ISIN; sin él, con «Z» y el código del país.
+  - **País (posiciones 129-130).** En V, donde están depositados (por defecto DEGIRO NL, Trade Republic DE y Revolut LT, editable). En I, el país del fondo, tomado del ISIN.
+  - **Entidad.** La emisora o el fondo, con el país de su ISIN. Su dirección y su identificación fiscal se dejan en blanco porque la aplicación no las conoce.
+  - **Decisión propia: un registro por activo y bróker**, con la fecha de la compra más antigua que sigue en cartera. El diseño pide un registro por cada fecha de adquisición; el FIFO es global entre brókers y no sabe qué lote está en cada uno. Si quieres desglosarlo, hazlo en el formulario.
+- **721.** Mensaje XML del servicio web del modelo, con los [esquemas y la descripción técnica de la AEAT](https://sede.agenciatributaria.gob.es/Sede/procedimientoini/GI55.shtml) (versión 1.0, con los 14 decimales de `ValorMonedas` de la Orden HAC/1504/2024). Se envía con certificado electrónico. Sin certificado, el formulario web pide un registro por moneda: la aplicación muestra esos datos con punto decimal y seis decimales.
+  - La entidad que custodia necesita nombre, país e identificación. Coinbase viene con Coinbase Luxembourg S.A. y su número de registro (B292147), según su aviso de la migración por MiCA; el resto, solo con nombre, país y web. Compruébalos.
+  - Valor unitario: el cierre de diciembre de Yahoo Finance o, si no lo tiene, de Kraken, y así consta en `OrigenValorMonedas`.
+- **Origen.** A: no estaba en el último modelo presentado. M: ya estaba. C: estaba, y en el año salió del bróker; se declara con la fecha de la última salida, lo que había justo antes y el valor de esa venta o, si se retiró, el cierre de ese mes.
+- **Qué entra.** Si lo único que obliga es un cierre, el fichero solo lleva los cierres: lo demás no ha subido 20.000 € y no se vuelve a declarar. En cualquier otro caso, todo lo que tienes en esos brókers.
+- Sin datos del declarante (NIF con su letra de control, apellidos y nombre, y teléfono de 9 cifras) o de una entidad del 721, no se genera. Tampoco de un año que no ha terminado.
+
+### Renta Web (experimental)
+
+No hay forma oficial de añadir un fichero al borrador. La AEAT admite un XML de declaración en «Presentación mediante fichero» → «Importar XML» ([esquema Renta2025.xsd](https://sede.agenciatributaria.gob.es/Sede/ayuda/disenos-registro/modelos-100-199.html)); según su ayuda, después se puede seguir completando y validar antes de presentar. El esquema solo obliga a los datos identificativos, la comunidad autónoma, la opción de tributación y tres resultados (base liquidable general, cuota diferencial y resultado).
+
+- **Qué lleva.** Tus datos identificativos y las inversiones: capital mobiliario (0027, 0029, 0031 y 0037, con el detalle de ingresos, retenciones españolas y gastos), 0304, cada entrada del F2 (acciones, ETF, criptomonedas y, con clave 4, divisas y otros), las pérdidas de otros años (0395) y la doble imposición internacional (rentas del ahorro obtenidas fuera e impuesto deducible).
+- **Cómo.** Cada entrada lleva los importes de la ventana de Renta Web y los de sus casillas. Las pérdidas aplazadas por recompra van como entrada propia con su marca. Los tres resultados obligatorios van a cero para que Renta Web los recalcule.
+- **Qué no.** No se une al borrador ni trae tus datos fiscales: trabajo, deducciones, etc. se completan en la declaración importada. Las divisas van sin fechas (casillas 1631 y 1632). Es tributación individual.
+- **Sin probar en la sede.** El XML pasa el esquema oficial, pero no se ha comprobado que Renta Web recalcule al importarlo ni que guarde la declaración para seguir otro día. Importarlo no presenta nada.
+- Solo para la Renta 2025: el esquema y las casillas cambian cada año.
 
 ## Límites conocidos
 

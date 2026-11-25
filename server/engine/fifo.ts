@@ -464,8 +464,10 @@ export function runEngine(input: EngineInput): EngineResult {
       const by: Record<string, string> = {};
       for (const [k, v] of brokerQty.get(assetId) ?? []) if (!v.isZero()) by[k] = toStr(v, 10);
       if (qty.isZero() && Object.keys(by).length === 0) continue;
+      const since = b.lots.find((l) => l.qty.gt(0))?.date.slice(0, 10);
       out.push({
         assetId, assetName: meta?.name ?? assetId, class: meta?.klass ?? 'other', quantity: toStr(qty, 10), costEur: toStr(cost, 6), byBroker: by,
+        ...(since ? { since } : {}),
       });
     }
     return out.sort((a, b) => a.assetName.localeCompare(b.assetName));

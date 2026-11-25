@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { reconcile } from '../shared/reconcile.ts';
-import type { Asset, Operation, Settings } from '../shared/types.ts';
+import { REGIONS, fullName, type Asset, type Operation, type Settings } from '../shared/types.ts';
 import { D } from '../shared/decimal.ts';
 import { fifoOperations } from '../shared/fifo-start.ts';
 import { ProfileError, allOps, createProfile, currentProfileId, getHistory, getOp, getSettings, latestRateDate, listAssets, listProfiles, profileDbPath, rateAt, renameProfile, saveAsset, saveSettings, withProfile } from './db.ts';
@@ -14,6 +14,8 @@ import { brokerFreshness, yearEndReview } from './checkup.ts';
 import { dossier } from './dossier.ts';
 import { exportYear } from './export.ts';
 import { foreignReport } from './foreign.ts';
+import { ID_TYPES, build720, build721, normalNif, validNif } from './aeat.ts';
+import { buildRentaXml, rentaBody, rentaMissing } from './renta.ts';
 import { performance, refreshPriceHistory } from './history.ts';
 import { refreshQuotes, storedQuotes } from './quotes.ts';
 import { resolutionRunning, scheduleResolution } from './resolution.ts';
@@ -247,6 +249,30 @@ app.put('/api/settings', async (c) => {
     || typeof f.valueEur !== 'string' || !/^\d+(\.\d+)?$/.test(f.valueEur) || filings.findIndex((g) => g.form === f.form && g.year === f.year) !== i))) {
     throw new ValidationError('Revisa los modelos 720 y 721 presentados.', null);
   }
+  const who = settings.declarant;
+  if (who != null) {
+    const text = [who.nif, who.surnames, who.firstName, who.phone, who.birthDate ?? '', who.sex ?? '', who.civilStatus ?? '', who.region ?? ''];
+    if (typeof who !== 'object' || !text.every((v) => typeof v === 'string')) throw new ValidationError('Revisa tus datos de declarante.', null);
+    if (!validNif(who.nif)) throw new ValidationError('El NIF no es válido. Revisa los números y la letra.', null);
+    if (!who.surnames.trim() || !who.firstName.trim() || fullName(who).length > 80) throw new ValidationError('Escribe tus apellidos y tu nombre.', null);
+    if (who.phone && !/^\d{9}$/.test(who.phone)) throw new ValidationError('El teléfono debe tener 9 cifras, sin prefijo ni espacios.', null);
+    const birth = who.birthDate ?? '';
+    if (birth && (!/^\d{4}-\d{2}-\d{2}$/.test(birth) || Number.isNaN(Date.parse(`${birth}T12:00:00Z`)) || new Date(`${birth}T12:00:00Z`).toISOString().slice(0, 10) !== birth || birth > today())) {
+      throw new ValidationError('Revisa la fecha de nacimiento.', null);
+    }
+    if (!['', 'H', 'M'].includes(who.sex ?? '') || !['', '1', '2', '3', '4'].includes(who.civilStatus ?? '') || (who.region && !REGIONS[who.region])) throw new ValidationError('Revisa tus datos personales.', null);
+    settings.declarant = {
+      nif: normalNif(who.nif), surnames: who.surnames.trim(), firstName: who.firstName.trim(), phone: who.phone,
+      birthDate: birth, sex: who.sex ?? '', civilStatus: who.civilStatus ?? '', region: who.region ?? '',
+    };
+  }
+  const custodians = settings.custodians;
+  if (custodians !== undefined && (!custodians || typeof custodians !== 'object' || Array.isArray(custodians) || Object.entries(custodians).some(([k, c]) => !/^72[01]\|[a-z_]+$/.test(k) || !c || typeof c !== 'object'
+    || Object.entries(c).some(([f, v]) => !['name', 'country', 'idType', 'id', 'web'].includes(f) || typeof v !== 'string')
+    || (c.country !== undefined && c.country !== '' && !/^[A-Z]{2}$/.test(c.country)) || (c.idType !== undefined && !ID_TYPES.includes(c.idType))
+    || (c.name?.length ?? 0) > 120 || (c.id?.length ?? 0) > 20 || (c.web?.length ?? 0) > 50))) {
+    throw new ValidationError('Revisa los datos de las entidades: país de 2 letras, identificación de hasta 20 caracteres y web de hasta 50.', null);
+  }
   saveSettings({ ...getSettings(), ...settings });
   return c.json(getSettings());
 });
@@ -281,6 +307,36 @@ app.get('/api/export/:year', async (c) => {
       'Content-Disposition': `attachment; filename="fifo-fiscal-${y}.xlsx"`,
     },
   });
+});
+
+// XML parcial de Renta: qué lleva y qué falta para generarlo.
+app.get('/api/aeat/100/:year/check', (c) => {
+  const rep = report(Number(c.req.param('year')));
+  return c.json({ missing: rentaMissing(rep, getSettings()), ...rentaBody(rep, engine()), toma: undefined });
+});
+
+// Ficheros para la sede de la AEAT: el 720 con su diseño de registro, el 721 como mensaje XML y la Renta como XML parcial.
+app.get('/api/aeat/:form/:year', (c) => {
+  const form = c.req.param('form');
+  const year = Number(c.req.param('year'));
+  if (!['100', '720', '721'].includes(form) || !Number.isInteger(year)) throw new ValidationError('Modelo no válido.', null);
+  if (form === '100') {
+    const rep = report(year);
+    const missing = rentaMissing(rep, getSettings());
+    if (missing.length) throw new ValidationError(`Para generar el XML de Renta falta ${missing.join(', ')}.`, missing);
+    return new Response(buildRentaXml(rep, engine(), getSettings()) as BodyInit, {
+      headers: { 'Content-Type': 'application/xml; charset=iso-8859-1', 'Content-Disposition': `attachment; filename="renta-${year}-inversiones.xml"` },
+    });
+  }
+  const f = foreignReport(year).forms.find((x) => x.form === form)!;
+  if (f.missing?.length) throw new ValidationError(`Para generar el ${form} falta ${f.missing.join(', ')}.`, f.missing);
+  const settings = getSettings();
+  if (form === '720') {
+    const { content } = build720(f, year, settings);
+    return new Response(content as BodyInit, { headers: { 'Content-Type': 'text/plain; charset=iso-8859-1', 'Content-Disposition': `attachment; filename="modelo-720-${year}.txt"` } });
+  }
+  const { content } = build721(f, year, settings);
+  return new Response(content, { headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Content-Disposition': `attachment; filename="modelo-721-${year}.xml"` } });
 });
 
 // Una ruta que no existe responde como API, no con la página: así la interfaz puede explicarlo.

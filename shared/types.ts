@@ -122,7 +122,31 @@ export interface Settings {
   lastFiledYear?: number | null;
   /** Modelos 720 y 721 presentados, con el valor total declarado. */
   foreignFilings?: ForeignFiling[];
+  /** Quien presenta los modelos 720 y 721. Solo se usa para generar los ficheros. */
+  declarant?: Declarant | null;
+  /** Datos de cada entidad para los ficheros, por «modelo|bróker». Lo que falta toma el valor por defecto. */
+  custodians?: Record<string, Partial<Custodian>>;
 }
+
+/**
+ * Quien declara. El teléfono (9 cifras) lo piden el 720 y el 721; la fecha de nacimiento (AAAA-MM-DD), el sexo,
+ * el estado civil (1 soltero, 2 casado, 3 viudo, 4 separado o divorciado) y la comunidad, la Renta.
+ */
+export interface Declarant {
+  nif: string; surnames: string; firstName: string; phone: string;
+  birthDate?: string; sex?: 'H' | 'M' | ''; civilStatus?: '1' | '2' | '3' | '4' | ''; region?: string;
+}
+export const fullName = (d: Partial<Pick<Declarant, 'surnames' | 'firstName'>>) => `${d.surnames?.trim() ?? ''} ${d.firstName?.trim() ?? ''}`.trim();
+/** Códigos de comunidad autónoma del modelo 100. Navarra y País Vasco tienen su propio impuesto. */
+export const REGIONS: Record<string, string> = {
+  '01': 'Andalucía', '02': 'Aragón', '03': 'Asturias', '04': 'Illes Balears', '05': 'Canarias', '06': 'Cantabria', '07': 'Castilla-La Mancha',
+  '08': 'Castilla y León', '09': 'Cataluña', '10': 'Extremadura', '11': 'Galicia', '12': 'Madrid', '13': 'Región de Murcia', '16': 'La Rioja',
+  '17': 'Comunitat Valenciana', '18': 'Ceuta', '19': 'Melilla',
+};
+/** nif: NIF español. 02 NIF-IVA, 03 pasaporte, 04 identificación del país de residencia, 05 certificado de residencia, 06 otro documento. */
+export type CustodianIdType = 'nif' | '02' | '03' | '04' | '05' | '06';
+/** En el 720 solo cuenta `country`, el país donde están depositados los valores. En el 721, la entidad que custodia las claves. */
+export interface Custodian { name: string; country: string; idType: CustodianIdType; id: string; web: string }
 
 /** 720: valores en el extranjero. 721: criptomonedas custodiadas en el extranjero. */
 export type ForeignForm = '720' | '721';
@@ -132,8 +156,22 @@ export interface ForeignHolding {
   broker: string; assetId: string; assetName: string; quantity: string; costEur: string; valueEur: string;
   /** close: cierre de diciembre. quote: cotización de hoy, el año no ha terminado. cost: sin precio, se usa el coste. */
   priced: 'close' | 'quote' | 'cost';
+  class?: DisposalClass;
+  /** Compra más antigua que sigue en cartera (AAAA-MM-DD): fecha de incorporación. */
+  since?: string | null;
+  /** A: se declara por primera vez. M: ya estaba en el último modelo presentado. */
+  origin?: 'A' | 'M';
+  /** De dónde sale el precio, para el 721. */
+  priceSource?: string | null;
 }
-export interface ForeignClosure { broker: string; assetId: string; assetName: string; quantity: string }
+export interface ForeignClosure {
+  broker: string; assetId: string; assetName: string;
+  /** Lo que había al empezar el año. */
+  quantity: string;
+  class?: DisposalClass;
+  /** Última salida del año: fecha de extinción, lo que había justo antes y su valor. */
+  date?: string | null; endQuantity?: string; valueEur?: string; since?: string | null; priceSource?: string | null;
+}
 export interface ForeignFormReport {
   form: ForeignForm; valueEur: string; costEur: string; holdings: ForeignHolding[]; closures: ForeignClosure[];
   /** Fuera de los brókers: si es una cartera tuya no se declara; si es otro exchange extranjero, sí. */
@@ -141,6 +179,12 @@ export interface ForeignFormReport {
   lastFiled: ForeignFiling | null; filed: ForeignFiling | null; increaseEur: string | null; required: boolean;
   /** over50k: primera vez y supera 50.000 €. increase: sube más de 20.000 € desde el último. closures: cierras algo ya declarado. */
   reasons: ('over50k' | 'increase' | 'closures')[];
+  /** Entidades que salen en el fichero, con sus datos ya combinados con los valores por defecto. */
+  entities?: { broker: string; custodian: Custodian }[];
+  /** Lo que falta para generar el fichero. Vacío: se puede descargar. */
+  missing?: string[];
+  /** Solo cierres: el resto no ha subido 20.000 € y no se vuelve a declarar. */
+  onlyClosures?: boolean;
 }
 export interface ForeignReport { year: number; estimated: boolean; forms: ForeignFormReport[] }
 
@@ -300,6 +344,8 @@ export interface Position {
   quantity: string;
   costEur: string;
   byBroker: Record<string, string>;
+  /** Fecha de la compra más antigua que sigue en cartera. */
+  since?: string;
 }
 
 export interface Issue {
