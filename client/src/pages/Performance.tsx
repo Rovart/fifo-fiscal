@@ -4,7 +4,7 @@ import { D, ZERO } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type IncomeGroup, type PerformanceData, type PerformanceYear } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
 import { DivergingBars, StackBar, ValueChart, YearColumns } from '../components/charts.tsx';
-import { Callout, Disclosure, Empty, Help, LoadError, Loading, PageHead, Segmented } from '../components/ui.tsx';
+import { Callout, Disclosure, Empty, Help, LoadError, Loading, PageHead, PageProgress, Segmented, Spinner } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { eur, monthShort, niceName, percent, signClass, signed } from '../format.ts';
 import { HELP } from '../glossary.ts';
@@ -106,12 +106,13 @@ export function Performance() {
   if (!data || !view) return <><PageHead title="Desempeño" />{loadError ? <LoadError onRetry={reload} /> : <Loading />}</>;
   const button = (
     <button className={`btn ${data.hasHistory ? '' : 'primary'}`} disabled={refreshing} onClick={() => void refresh()}>
-      <RefreshCw size={15} /> {refreshing ? 'Buscando…' : data.hasHistory ? 'Actualizar precios' : 'Cargar precios'}
+      {refreshing ? <Spinner /> : <RefreshCw size={15} />} {refreshing ? 'Cargando precios…' : data.hasHistory ? 'Actualizar precios' : 'Cargar precios'}
     </button>
   );
   if (!data.hasHistory) {
     return (
       <>
+        <PageProgress active={refreshing} label="Cargando precios" />
         <PageHead title="Desempeño" />
         {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
         <div className="card">
@@ -136,6 +137,7 @@ export function Performance() {
 
   return (
     <>
+      <PageProgress active={refreshing} label="Cargando precios" />
       <PageHead title="Desempeño" sub={`Antes de impuestos.${updated}`}>{button}</PageHead>
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
       {unpriced.length > 0 && (

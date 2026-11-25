@@ -1,8 +1,8 @@
 import YahooFinance from 'yahoo-finance2';
 import { OAT_2035, oatPrices } from './bond-prices.ts';
 import { compatiblePriceSymbol, securityFor } from './securities.ts';
-import { D, type Decimal } from '../shared/decimal.ts';
-import { db, listAssets, rateAt } from './db.ts';
+import { D, Decimal } from '../shared/decimal.ts';
+import { allOps, db, listAssets, rateAt } from './db.ts';
 import { engine, priceEur, refreshEcbRates, today } from './service.ts';
 
 export interface Quote { assetId: string; symbol: string | null; currency: string | null; price: string | null; priceEur: string | null; at: string | null; fetchedAt: string | null }
@@ -49,17 +49,75 @@ export async function symbolCandidates(assetId: string, name: string, klass: str
   const short = clean.replace(/\s+(UCITS|ETF|ACC|DIST|CLASS)\b.*$/i, '').trim();
   const shorter = short.split(/\s+/).slice(0, 6).join(' ');
   // Lo que el buscador da por ISIN a veces no tiene histórico: el nombre queda como reserva.
-  const found = [...(await list(assetId))];
+  const byIsin = await list(assetId);
+  const byName: string[] = [];
   for (const q of new Set([short, shorter, clean])) {
     if (!q) continue;
-    const byName = await list(q);
-    found.push(...byName);
-    if (byName.length) break;
+    const found = await list(q);
+    byName.push(...found);
+    if (found.length) break;
   }
-  // La bolsa principal va primero, venga del ISIN o del nombre.
+  // Lo que da el ISIN es ese valor; por nombre puede salir otra clase del mismo fondo, así que va detrás.
+  // Dentro de cada grupo, la bolsa principal primero.
   const home = HOME[assetId.slice(0, 2)];
-  const unique = [...new Set(found)];
-  return home ? [...unique.filter((s) => home.test(s)), ...unique.filter((s) => !home.test(s))] : unique;
+  const byHome = (list: string[]) => (home ? [...list.filter((s) => home.test(s)), ...list.filter((s) => !home.test(s))] : list);
+  return [...new Set([...byHome(byIsin), ...byHome(byName)])];
+}
+
+/** Último precio al que operaste un activo, en euros por unidad y sin comisiones. */
+function lastTrade(assetId: string): { date: string; eur: Decimal } | null {
+  const last = allOps()
+    .filter((o) => o.assetId === assetId && (o.kind === 'buy' || o.kind === 'sell') && D(o.quantity).abs().gt(0) && D(o.grossEur).abs().gt(0))
+    .sort((a, b) => b.datetime.localeCompare(a.datetime))[0];
+  return last ? { date: last.datetime.slice(0, 10), eur: D(last.grossEur).abs().div(D(last.quantity).abs()) } : null;
+}
+
+interface DailyChart {
+  meta?: { currency?: string };
+  quotes?: { date: Date | string; low?: number | null; high?: number | null }[];
+  events?: { splits?: { date: Date | string; numerator: number; denominator: number }[] };
+}
+const TRADE_WINDOW_DAYS = 400;
+const checked = new Map<string, boolean>();
+
+/**
+ * ¿Cotizaba el símbolo cerca de tu última compra o venta a un precio parecido al que pagaste o cobraste?
+ * Descarta otra clase del mismo fondo (acumulación y distribución) o un valor con el mismo nombre.
+ * A Yahoo solo se le pide el último año del símbolo, nunca la fecha ni el importe de la operación.
+ * Sin operación reciente ni cotizaciones con que comparar, no se descarta.
+ */
+export async function fitsLastTrade(symbol: string, assetId: string): Promise<boolean> {
+  const trade = lastTrade(assetId);
+  const start = Date.parse(`${today()}T12:00:00Z`) - TRADE_WINDOW_DAYS * 864e5;
+  if (!trade || Date.parse(`${trade.date}T12:00:00Z`) < start) return true;
+  const key = `${symbol}|${assetId}|${trade.date}|${trade.eur.toFixed(4)}`;
+  const known = checked.get(key);
+  if (known !== undefined) return known;
+  let chart: DailyChart | null = null;
+  try { chart = (await yf.chart(symbol, { period1: new Date(start), interval: '1d', events: 'split' }, { validateResult: false })) as DailyChart; } catch { return true; }
+  if (!chart?.quotes?.length) return true;
+  let currency = chart.meta?.currency ?? 'USD';
+  const pence = currency === 'GBp' || currency === 'GBX';
+  if (pence) currency = 'GBP';
+  const splits = chart.events?.splits ?? [];
+  const at = Date.parse(`${trade.date}T12:00:00Z`);
+  let low: Decimal | null = null, high: Decimal | null = null;
+  for (const q of chart.quotes) {
+    const t = new Date(q.date).getTime();
+    if (Math.abs(t - at) > 4 * 864e5 || !q.low || !q.high) continue;
+    const day = new Date(t).toISOString().slice(0, 10);
+    const rate = currency === 'EUR' ? D(1) : rateAt(currency, day);
+    if (!rate) continue;
+    // Yahoo ajusta por splits posteriores: se deshace para comparar con lo que pagaste ese día.
+    let factor = D(pence ? '0.01' : 1);
+    for (const sp of splits) if (new Date(sp.date).getTime() > t && sp.denominator) factor = factor.times(sp.numerator).div(sp.denominator);
+    const lo = D(q.low).times(factor).div(rate), hi = D(q.high).times(factor).div(rate);
+    low = low ? Decimal.min(low, lo) : lo;
+    high = high ? Decimal.max(high, hi) : hi;
+  }
+  const fits = !low || !high || (trade.eur.gte(low.times('0.96')) && trade.eur.lte(high.times('1.04')));
+  checked.set(key, fits);
+  return fits;
 }
 
 const toEur = (price: Decimal, currency: string): Decimal | null => {
@@ -94,9 +152,14 @@ export async function refreshQuotes() {
         ...await symbolCandidates(p.assetId, p.assetName, klass),
       ])];
       let found = false;
+      let wrongCached = false;
       for (const sym of candidates) {
         const q = await yf.quote(sym, {}, { validateResult: false }).catch(() => null);
         if (!q?.regularMarketPrice || !q.currency) continue;
+        if (!(await fitsLastTrade(sym, p.assetId))) {
+          if (sym === cached?.symbol) wrongCached = true;
+          continue;
+        }
         const pence = q.currency === 'GBp' || q.currency === 'GBX';
         const currency = pence ? 'GBP' : q.currency;
         const price = D(q.regularMarketPrice).div(pence ? 100 : 1);
@@ -113,8 +176,8 @@ export async function refreshQuotes() {
       if (kraken) {
         save.run(p.assetId, 'Kraken', 'EUR', kraken.toDecimalPlaces(8).toFixed(), kraken.toFixed(8), now, now);
       } else {
-        // Un fallo puntual del proveedor no borra una cotización ya disponible.
-        if (!known[p.assetId]?.priceEur) save.run(p.assetId, null, null, null, null, null, now);
+        // Un fallo puntual del proveedor no borra una cotización ya disponible; la de otra clase, sí.
+        if (!known[p.assetId]?.priceEur || wrongCached) save.run(p.assetId, null, null, null, null, null, now);
         missing.push(p.assetName);
       }
     }

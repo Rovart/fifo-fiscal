@@ -167,7 +167,7 @@ Tampoco se arrastra si lo vendido llegó de fuera por un depósito y ya se vendi
 
 ## Precios actuales
 
-Cartera y «¿Y si vendo?» usan precios de Yahoo Finance mediante la librería `yahoo-finance2`, solo cuando se pide. El símbolo se busca por ISIN, dando preferencia a la bolsa del país del ISIN; si Yahoo no lo conoce, por nombre. El símbolo usado se ve al desplegar cada valor. Una criptomoneda que Yahoo solo cotiza en dólares, como stETH, se pasa a euros al cambio del BCE; las que Yahoo no tiene usan el último precio de Kraken. Son orientativos, no valores fiscales, y no incluyen comisiones de venta.
+Cartera y «¿Y si vendo?» usan precios de Yahoo Finance mediante la librería `yahoo-finance2`, solo cuando se pide. El símbolo se busca por ISIN, dando preferencia a la bolsa del país del ISIN; lo encontrado por nombre va siempre detrás, porque puede ser otra clase del mismo fondo (acumulación o distribución). Cada símbolo se contrasta con tu última compra o venta del último año: si alrededor de esa fecha cotizaba más de un 4 % fuera del precio que pagaste o cobraste, se descarta, también para los cierres mensuales de Desempeño y del 720. A Yahoo solo se le pide el último año del símbolo, no la fecha ni el importe de la operación. Si ningún símbolo encaja, el activo queda sin precio en vez de con el de otro valor. El símbolo usado se ve al desplegar cada valor. Una criptomoneda que Yahoo solo cotiza en dólares, como stETH, se pasa a euros al cambio del BCE; las que Yahoo no tiene usan el último precio de Kraken. Son orientativos, no valores fiscales, y no incluyen comisiones de venta.
 
 ## Modelos 720 y 721
 

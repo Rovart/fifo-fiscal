@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { validIsin } from '../shared/review.ts';
 import { SECURITIES } from '../server/securities.ts';
 
-const mocks = vi.hoisted(() => ({ search: vi.fn(), quote: vi.fn(), engine: vi.fn() }));
-vi.mock('yahoo-finance2', () => ({ default: class { search = mocks.search; quote = mocks.quote; } }));
+const mocks = vi.hoisted(() => ({ search: vi.fn(), quote: vi.fn(), chart: vi.fn(), engine: vi.fn() }));
+vi.mock('yahoo-finance2', () => ({ default: class { search = mocks.search; quote = mocks.quote; chart = mocks.chart; } }));
 vi.mock('../server/service.ts', () => ({ engine: mocks.engine, refreshEcbRates: async () => ({}), priceEur: async () => null, today: () => '2026-11-03' }));
 process.env.FIFO_DB = ':memory:';
-const { db, insertRates } = await import('../server/db.ts');
+const { db, insertRates, putOp } = await import('../server/db.ts');
 const { symbolCandidates, refreshQuotes, storedQuotes } = await import('../server/quotes.ts');
 
 describe('Identificación y precios por bolsa', () => {
@@ -69,5 +69,42 @@ describe('Identificación y precios por bolsa', () => {
     mocks.quote.mockImplementation(async (symbol) => symbol === 'STETH-USD' ? { regularMarketPrice: 2500, currency: 'USD' } : undefined);
     await refreshQuotes();
     expect(storedQuotes().STETH).toMatchObject({ symbol: 'STETH-USD', priceEur: '2000.00000000' });
+  });
+
+  it('pone lo que da el ISIN antes que lo encontrado por nombre, que puede ser otra clase', async () => {
+    mocks.search.mockImplementation(async (query: string) => ({
+      quotes: query === 'IE00B3VWN518' ? [{ symbol: 'CSBGU0.SW', quoteType: 'ETF' }] : [{ symbol: 'IDTM.L', quoteType: 'ETF' }, { symbol: 'IBTM.L', quoteType: 'ETF' }],
+    }));
+    expect(await symbolCandidates('IE00B3VWN518', 'ISHARES $ TREASURY BOND 7-10YR UCITS ETF USD (ACC)', 'etf')).toEqual(['CSBGU0.SW', 'IDTM.L', 'IBTM.L']);
+  });
+
+  it('descarta un símbolo cuyo precio no casa con tu última compra y quita el precio que dejó guardado', async () => {
+    const assetId = 'IE00B3VWN518';
+    insertRates(['2026-10-19', '2026-10-20'].map((date) => ({ date, currency: 'USD', rate: '1.0935' })));
+    // 127 participaciones a unos 149,8 $ (137,01 €) el 20 de octubre.
+    putOp({
+      id: 'idtm-buy', broker: 'degiro', kind: 'buy', datetime: '2026-10-20T10:00:00', assetId, assetName: 'iShares $ Treasury 7-10yr Acc', assetClass: 'etf',
+      quantity: '127', unitPrice: '149.8', currency: 'USD', fxRate: '1.0935', grossLocal: '19024.60', grossEur: '17399.94', feeEur: '0', otherCostsEur: '0', withholdingEur: '0',
+      totalEur: '17399.94', settleCurrency: 'EUR',
+    });
+    mocks.engine.mockReturnValue({ positions: [{ assetId, assetName: 'iShares $ Treasury 7-10yr Acc', class: 'etf', quantity: '127' }] });
+    mocks.search.mockImplementation(async (query: string) => ({ quotes: query === assetId ? [{ symbol: 'CSBGU0.SW', quoteType: 'ETF' }] : [{ symbol: 'IDTM.L', quoteType: 'ETF' }] }));
+    const day = (d: string, low: number, high: number) => ({ date: new Date(`${d}T16:00:00Z`), low, high });
+    // La clase de distribución cotiza un 9 % más cara que la de acumulación.
+    mocks.chart.mockImplementation(async (symbol: string) => ({
+      meta: { currency: 'USD' },
+      quotes: symbol === 'IDTM.L' ? [day('2026-10-19', 163.1, 163.6), day('2026-10-20', 162.9, 163.5)] : [day('2026-10-19', 149.6, 150.2), day('2026-10-20', 149.5, 150.4)],
+    }));
+    mocks.quote.mockImplementation(async (symbol: string) => ({ regularMarketPrice: symbol === 'IDTM.L' ? 166.33 : 153.75, currency: 'USD' }));
+    db.prepare('INSERT INTO quotes (asset_id,symbol,currency,price,price_eur) VALUES (?,?,?,?,?)').run(assetId, 'IDTM.L', 'USD', '166.33', '152.10791038');
+
+    await refreshQuotes();
+    expect(storedQuotes()[assetId]).toMatchObject({ symbol: 'CSBGU0.SW', price: '153.75' });
+
+    // Si ningún símbolo casa, mejor sin precio que con el de otra clase.
+    db.prepare('UPDATE quotes SET symbol = ?, price_eur = ? WHERE asset_id = ?').run('IDTM.L', '152.10791038', assetId);
+    mocks.search.mockResolvedValue({ quotes: [] });
+    expect(await refreshQuotes()).toMatchObject({ missing: ['iShares $ Treasury 7-10yr Acc'] });
+    expect(storedQuotes()[assetId]).toMatchObject({ symbol: null, priceEur: null });
   });
 });

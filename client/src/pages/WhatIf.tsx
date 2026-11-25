@@ -4,7 +4,7 @@ import { D, Decimal, ZERO, isNum } from '../../../shared/decimal.ts';
 import type { OpenLot, Position, SaleSimulation, SalesSimulation } from '../../../shared/types.ts';
 import { api, ApiError } from '../api.ts';
 import { LotSlider, lotSegments } from '../components/LotSlider.tsx';
-import { Callout, Disclosure, Empty, Help, Loading, NumField, PageHead, Segmented } from '../components/ui.tsx';
+import { Callout, Disclosure, Empty, Help, Loading, NumField, PageHead, PageProgress, Segmented, Spinner } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { dateShort, eur, isinOf, monthLabel, niceName, price as priceText, qty, signClass, signed, symbol, units } from '../format.ts';
 import { HELP } from '../glossary.ts';
@@ -280,8 +280,9 @@ export function WhatIf() {
 
   return (
     <>
+      <PageProgress active={refreshing} label="Actualizando precios" />
       <PageHead title="¿Y si vendo?" sub={`No se guarda nada.${updated}`}>
-        <button className={`btn ${fetched ? '' : 'primary'}`} disabled={refreshing} onClick={() => void refresh()}><RefreshCw size={15} /> {refreshing ? 'Buscando…' : 'Actualizar precios'}</button>
+        <button className={`btn ${fetched ? '' : 'primary'}`} disabled={refreshing} onClick={() => void refresh()}>{refreshing ? <Spinner /> : <RefreshCw size={15} />} {refreshing ? 'Actualizando…' : 'Actualizar precios'}</button>
       </PageHead>
       {error && <Callout tone="error">{error}</Callout>}
       {missing.length > 0 && <Callout tone="warn">Sin precio: {missing.map(niceName).join(', ')}.</Callout>}

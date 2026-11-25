@@ -292,9 +292,9 @@ export function RentaFile({ year }: { year: number }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  if (!data || data.parts.length === 0) return null;
+  // El XML solo existe para la Renta 2025: en otros años la tarjeta no aporta nada.
+  if (!data || data.parts.length === 0 || data.missing.some((m) => m.startsWith('el diseño'))) return null;
   const who = settings.declarant;
-  const otherYear = data.missing.find((m) => m.startsWith('el diseño'));
   const whoMissing = data.missing.filter((m) => DECLARANT_MISSING.has(m));
   const review = data.missing.includes('resolver lo pendiente en Revisar');
   const download = async () => {
@@ -309,12 +309,10 @@ export function RentaFile({ year }: { year: number }) {
       {error && <p className="hz-error hz-error-block" role="alert">{error}</p>}
       <div className="hz-chips">{data.parts.map((p) => <span key={p} className="hz-chip"><Check size={13} strokeWidth={2.5} />{p}</span>)}</div>
       <div className="hz-list">
-        {otherYear ? <CheckRow ok={false} label="Ejercicio" value="Por ahora, solo para la Renta 2025" /> : (
-          <CheckRow ok={!whoMissing.length && !!who} label="Declarante" value={who && !whoMissing.length ? `${fullName(who)} · ${who.nif}` : pendingText(whoMissing)}
-            open={editing} onToggle={() => setEditing(!editing)}>
-            <DeclarantForm initial={who} renta onDone={() => setEditing(false)} />
-          </CheckRow>
-        )}
+        <CheckRow ok={!whoMissing.length && !!who} label="Declarante" value={who && !whoMissing.length ? `${fullName(who)} · ${who.nif}` : pendingText(whoMissing)}
+          open={editing} onToggle={() => setEditing(!editing)}>
+          <DeclarantForm initial={who} renta onDone={() => setEditing(false)} />
+        </CheckRow>
         {review && <CheckRow ok={false} label="Revisar" value="Hay datos por resolver" nav onToggle={() => go('review')} />}
         {data.notes.map((n) => <CheckRow key={n.title} ok={false} label="Completar en Renta Web" value={<span className="hz-inline">{n.title}<InfoTip text={n.detail} /></span>} />)}
       </div>

@@ -34,7 +34,22 @@ export function PageHead({ title, sub, year, children }: { title: ReactNode; sub
   );
 }
 
-export const Loading = () => <div className="skeleton" role="status" aria-live="polite"><span className="sr-only">Cargando…</span></div>;
+/** Esqueleto de lo que se está cargando: líneas con un brillo que las recorre. */
+export const Loading = () => (
+  <div className="skeleton" role="status">
+    <span className="sr-only">Cargando…</span>
+    {['38%', '100%', '84%', '62%'].map((w) => <i key={w} aria-hidden="true" style={{ '--w': w } as React.CSSProperties} />)}
+  </div>
+);
+
+/**
+ * Rueda de actividad sobre <progress> indeterminado: con `label`, los lectores de pantalla la anuncian como ocupado.
+ * Sin él es decorativa, para botones cuyo texto ya dice lo que pasa.
+ */
+export const Spinner = ({ label }: { label?: string }) => <progress className="spinner" aria-label={label} aria-hidden={label ? undefined : true} />;
+
+/** Barra fina en lo alto de la ventana mientras dura una consulta que no tiene porcentaje. */
+export const PageProgress = ({ active, label }: { active: boolean; label: string }) => (active ? <progress className="page-progress" aria-label={label} /> : null);
 
 export function LoadError({ onRetry }: { onRetry: () => void }) {
   return <Callout tone="error" title="No se pudieron cargar los datos" action={<button className="btn small" onClick={onRetry}>Reintentar</button>}>Comprueba la conexión con la aplicación.</Callout>;

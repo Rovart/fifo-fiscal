@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { trade } from './helpers.ts';
 
 const mocks = vi.hoisted(() => ({ chart: vi.fn(), candidates: vi.fn() }));
-vi.mock('../server/quotes.ts', () => ({ refreshQuotes: async () => ({}), storedQuotes: () => ({}), symbolCandidates: mocks.candidates, yf: { chart: mocks.chart } }));
+vi.mock('../server/quotes.ts', () => ({ refreshQuotes: async () => ({}), storedQuotes: () => ({}), symbolCandidates: mocks.candidates, fitsLastTrade: async () => true, yf: { chart: mocks.chart } }));
 process.env.FIFO_DB = ':memory:';
 const { db, putOp, saveAsset } = await import('../server/db.ts');
 const { performance, refreshPriceHistory } = await import('../server/history.ts');

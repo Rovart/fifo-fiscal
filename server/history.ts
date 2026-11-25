@@ -7,7 +7,7 @@ import { nextMonth } from './engine/dates.ts';
 import { runEngine } from './engine/fifo.ts';
 import { computePerformance } from './engine/performance.ts';
 import { buildYearReport } from './engine/report.ts';
-import { refreshQuotes, storedQuotes, symbolCandidates, yf } from './quotes.ts';
+import { fitsLastTrade, refreshQuotes, storedQuotes, symbolCandidates, yf } from './quotes.ts';
 import { compatiblePriceSymbol } from './securities.ts';
 import { assetsMap, krakenListed, krakenNoTrade, priceEur, today, withAssetMeta } from './service.ts';
 
@@ -118,7 +118,13 @@ export async function refreshPriceHistory() {
       // Un nombre puede dar otra clase del mismo fondo: el precio debe parecerse al de tu primera compra.
       let chosen: { symbol: string; closes: Map<string, Decimal> } | null = null;
       let coverage = 0;
+      let wrongRemembered = false;
       for (const symbol of candidates) {
+        // Otra clase del mismo fondo cotiza a otro precio: se nota en tu última operación.
+        if (!(await fitsLastTrade(symbol, assetId))) {
+          if (symbol === remembered) wrongRemembered = true;
+          continue;
+        }
         const closes = await monthlyCloses(symbol, r.from, r.to);
         if (closes.size === 0) continue;
         const first = closes.get(r.from);
@@ -132,13 +138,15 @@ export async function refreshPriceHistory() {
         db.exec('BEGIN');
         try {
           // Un histórico de otra clase no debe seguir rellenando los meses sin datos.
-          if (!compatiblePriceSymbol(assetId, remembered)) deletePrices.run(assetId);
+          if (!compatiblePriceSymbol(assetId, remembered) || wrongRemembered) deletePrices.run(assetId);
           for (const [month, px] of chosen.closes) savePrice.run(assetId, month, px.toFixed(8));
           saveSymbol.run(assetId, chosen.symbol, now);
           db.exec('COMMIT');
         } catch (e) { db.exec('ROLLBACK'); throw e; }
       } else {
-        if (!remembered) saveSymbol.run(assetId, null, now);
+        // Los cierres de una clase equivocada no se quedan valorando la cartera ni el 720.
+        if (wrongRemembered) deletePrices.run(assetId);
+        if (!remembered || wrongRemembered) saveSymbol.run(assetId, null, now);
         // Comprado este mes aún no tiene cierre: basta su cotización de hoy.
         if (!storedQuotes()[assetId]?.priceEur) missing.push(r.name);
       }

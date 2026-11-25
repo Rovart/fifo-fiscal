@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { D, type Decimal } from '../../../shared/decimal.ts';
 import { BROKER_LABEL, type Broker, type DisposalClass, type Position } from '../../../shared/types.ts';
 import { api, ApiError, type PortfolioData } from '../api.ts';
-import { Callout, Empty, Help, LoadError, Loading, Menu, PageHead } from '../components/ui.tsx';
+import { Rolling } from '../components/motion.tsx';
+import { Callout, Empty, Help, LoadError, Loading, Menu, PageHead, PageProgress, Spinner } from '../components/ui.tsx';
 import { useApp } from '../context.ts';
 import { HELP } from '../glossary.ts';
 import { dateShort, eur, isinOf, niceName, percent, price, qty, signClass, signed, symbol, units } from '../format.ts';
@@ -26,6 +27,8 @@ export function Portfolio() {
   const { data, error: loadError, reload } = useApi<PortfolioData>('/portfolio', `${tick}`);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Tras actualizar, los importes nuevos entran con un fundido; en la primera carga no.
+  const [refreshed, setRefreshed] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showZero, setShowZero] = useState(() => { try { return localStorage.getItem(ZERO_KEY) === '1'; } catch { return false; } });
@@ -52,6 +55,7 @@ export function Portfolio() {
     try {
       const r = await api<{ updated: number; missing: string[] }>('/quotes/refresh', { method: 'POST' });
       setMissing(r.missing);
+      setRefreshed(true);
       reload();
       toast(`${r.updated} precios actualizados`);
       changed();
@@ -91,6 +95,7 @@ export function Portfolio() {
 
   return (
     <>
+      <PageProgress active={busy} label="Actualizando precios" />
       <PageHead title="Cartera" sub={fetched ? `Precios consultados el ${new Date(fetched).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}` : undefined}>
         {zeroCount > 0 && (
           <label className="inline small muted">
@@ -104,7 +109,7 @@ export function Portfolio() {
           label={<><ArrowDownUp size={15} aria-hidden="true" />{SORTS[sort]}</>}
           items={(Object.keys(SORTS) as Sort[]).map((id) => ({ label: SORTS[id], checked: sort === id, onSelect: () => changeSort(id) }))}
         />
-        <button className="btn" disabled={busy} onClick={() => void refresh()}><RefreshCw size={15} /> {busy ? 'Buscando…' : fetched ? 'Actualizar precios' : 'Ver precios actuales'}</button>
+        <button className="btn" disabled={busy} onClick={() => void refresh()}>{busy ? <Spinner /> : <RefreshCw size={15} />} {busy ? 'Actualizando…' : fetched ? 'Actualizar precios' : 'Ver precios actuales'}</button>
       </PageHead>
       {positions.length === 0 && <div className="card"><Empty icon={Wallet} title="Solo quedan saldos a cero" /></div>}
       {error && <Callout tone="error">No se han podido obtener los precios: {error}</Callout>}
@@ -116,7 +121,7 @@ export function Portfolio() {
           <button className="link" onClick={() => go('review')}>Revisar el saldo</button>
         </Callout>
       )}
-      <div className="stat-grid">
+      <div className={`stat-grid ${busy ? 'is-refreshing' : ''}`}>
         <div className="stat-card">
           <div className="l">Te ha costado <Help text={HELP.coste} /></div>
           <div className="v">{eur(total)}</div>
@@ -125,12 +130,12 @@ export function Portfolio() {
           <>
             <div className="stat-card">
               <div className="l">Vale hoy</div>
-              <div className="v">{eur(value.toFixed(2))}</div>
+              <div className="v"><Rolling value={eur(value.toFixed(2))} /></div>
               {noPrice > 0 && <div className="small faint">Sin contar {noPrice} sin precio</div>}
             </div>
             <div className="stat-card">
               <div className="l">Sin realizar <Help text={HELP.latente} /></div>
-              <div className={`v ${signClass(latent.toFixed(2))}`}>{signed(latent.toFixed(2))}</div>
+              <div className={`v ${signClass(latent.toFixed(2))}`}><Rolling value={signed(latent.toFixed(2))} /></div>
             </div>
           </>
         )}
@@ -139,7 +144,7 @@ export function Portfolio() {
         const rows = positions.filter((p) => p.class === g.id).sort(compare);
         if (rows.length === 0) return null;
         return (
-          <div className="card flush" key={g.id}>
+          <div className={`card flush ${busy ? 'is-refreshing' : ''}`} key={g.id}>
             <div className="card-title"><h2>{g.label}</h2></div>
             <div className="list">
               {rows.map((p) => {
@@ -158,7 +163,7 @@ export function Portfolio() {
                         <div className="sub">{units(p.quantity, p.class, p.assetId)} · {Object.keys(p.byBroker).filter((b) => D(p.byBroker[b]).gt(0)).map(brokerName).join(', ')}</div>
                         {hasRecent && g.id !== 'crypto' && g.id !== 'fx' && <span className="tag warn" style={{ marginTop: 4 }}>Compra reciente</span>}
                       </div>
-                      <div className="end">
+                      <div className={`end ${refreshed ? 'fade-swap' : ''}`} key={refreshed ? `${res}|${pct}` : 'end'}>
                         {res ? <div className={`amount ${signClass(res)}`}>{signed(res)}</div> : <div className="amount">{eur(D(p.costEur).toFixed(2))}</div>}
                         <div className="sub">{res ? `vale ${eur((val as ReturnType<typeof D>).toFixed(2))}${pct ? ` · ${percent(pct)}` : ''}` : g.id === 'fx' ? 'coste' : 'sin precio'}</div>
                       </div>

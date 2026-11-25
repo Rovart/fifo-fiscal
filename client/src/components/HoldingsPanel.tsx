@@ -5,7 +5,7 @@ import { useApp } from '../context.ts';
 import { eur, niceName, percent, qty, signClass, units } from '../format.ts';
 import { holdings } from '../holdings.ts';
 import { useApi } from '../hooks.ts';
-import { Empty, Help, Loading } from './ui.tsx';
+import { Empty, Help, Loading, PageProgress, Spinner } from './ui.tsx';
 
 export function HoldingsPanel({ onClose }: { onClose: () => void }) {
   const { state, tick, changed, go } = useApp();
@@ -40,7 +40,8 @@ export function HoldingsPanel({ onClose }: { onClose: () => void }) {
         <h2 id="holdings-title">Mi cartera</h2>
         <button ref={closeButton} className="btn quiet icon" aria-label="Cerrar cartera" onClick={onClose}><X size={19} /></button>
       </header>
-      <div className="holdings-body" aria-busy={busy}>
+      <PageProgress active={busy} label="Actualizando precios" />
+      <div className={`holdings-body ${busy ? 'is-refreshing' : ''}`}>
         {error && <div className="holdings-message" role="alert"><p>No se pudo cargar la cartera.</p><button className="btn small" onClick={reload}>Reintentar</button></div>}
         {!data && !error && <Loading />}
         {portfolio && portfolio.rows.length === 0 && <Empty icon={Wallet} title="Aún no tienes posiciones"><button className="btn small" onClick={() => go('upload')}>Subir CSV</button></Empty>}
@@ -75,7 +76,7 @@ export function HoldingsPanel({ onClose }: { onClose: () => void }) {
       {portfolio && portfolio.rows.length > 0 && <footer className="holdings-foot">
         <div className="holdings-prices">
           <span className="small muted">{updated ? `Precios: ${updated}` : 'Sin precios actuales'}</span>
-          <button className="btn quiet small" aria-label={busy ? 'Actualizando precios' : 'Actualizar precios'} disabled={busy} onClick={() => void refresh()}><RefreshCw size={15} aria-hidden="true" className={busy ? 'holdings-refreshing' : undefined} /> {busy ? 'Actualizando…' : 'Actualizar'}</button>
+          <button className="btn quiet small" aria-label={busy ? 'Actualizando precios' : 'Actualizar precios'} disabled={busy} onClick={() => void refresh()}>{busy ? <Spinner /> : <RefreshCw size={15} aria-hidden="true" />} {busy ? 'Actualizando…' : 'Actualizar'}</button>
         </div>
         <button className="link small inline" onClick={() => go('portfolio')}>Ver detalle <ArrowUpRight size={14} /></button>
       </footer>}

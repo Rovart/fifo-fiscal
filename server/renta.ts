@@ -1,7 +1,7 @@
-import { D, Decimal, ZERO } from '../shared/decimal.ts';
+import { D, Decimal, ZERO, cents } from '../shared/decimal.ts';
 import { REGIONS, type EngineResult, type Settings } from '../shared/types.ts';
 import { validNif, normalNif } from './aeat.ts';
-import type { FormEntry, YearReport } from './engine/report.ts';
+import { isNeutralFx, type FormEntry, type YearReport } from './engine/report.ts';
 
 /**
  * XML parcial del modelo 100 para «Presentación mediante fichero» → «Importar XML» (esquema Renta2025.xsd).
@@ -84,11 +84,15 @@ function crypto(entries: FormEntry[]): string {
 }
 
 /** Divisas y otros valores: «otros elementos patrimoniales», clave 4. */
-function others(entries: FormEntry[]): string {
+/** Una entrada de «otros elementos» con, si se conocen, la fecha de venta y la de la compra más antigua que consume. */
+type Element = FormEntry & { sold?: string; bought?: string };
+
+function others(entries: Element[]): string {
   return `<GPOtrosElementos>${entries.map((e) => [
     '<ElementoPatrimonial>',
     e.deferred ? tag('V01TX2NA', '1') : '',
     tag('G2DB', '4'), tag('F2ONEROSA', '1'),
+    e.sold ? tag('G2DC', ddmmyyyy(e.sold)) : '', e.bought ? tag('G2DD', ddmmyyyy(e.bought)) : '',
     tag('G2DE', D(e.transmission)), tag('G2DF', D(e.acquisition)),
     nz(e.lossObtained) ? tag('G2DG', D(e.lossObtained)) + tag('G2DH', D(e.lossComputable)) : '',
     nz(e.gain) ? tag('G2DI', D(e.gain)) + tag('G2NDEX', D(e.gain)) + tag('G2DO', D(e.gain)) + tag('G2DP', D(e.gain)) : '',
@@ -133,9 +137,23 @@ export function rentaBody(rep: YearReport, res: EngineResult): { toma: string; p
   const add = (label: string, body: string) => { if (body) parts.push(label); return body; };
 
   const stock = section('stock'), etf = section('etf'), coins = section('crypto');
-  const rest = [...section('fx'), ...section('other')];
+  // Divisas y otros: una entrada por venta, con sus fechas, si caben en las 80 que admite Renta Web; si no, una por activo.
+  const sales: Element[] = res.disposals
+    .filter((d) => d.year === rep.year && (d.class === 'fx' || d.class === 'other') && !d.simulated && !isNeutralFx(d))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => {
+      const gain = D(d.gainEur);
+      const loss = gain.lt(0) ? cents(gain.abs()) : '0.00';
+      const bought = d.matches.filter((m) => !m.missing).map((m) => m.acqDate.slice(0, 10)).sort()[0];
+      return {
+        name: d.assetName, assetId: d.assetId, transmission: cents(D(d.proceedsEur)), acquisition: cents(D(d.costEur)),
+        gain: gain.gt(0) ? cents(gain) : '0.00', lossObtained: loss, lossComputable: loss, sold: d.date.slice(0, 10), ...(bought ? { bought } : {}),
+      };
+    });
+  const grouped = [...section('fx'), ...section('other')];
+  const rest: Element[] = sales.length && sales.length <= 80 ? sales : grouped;
   if (stock.length > 200 || etf.length > 200 || coins.length > 300 || rest.length > 80) throw new Error('Hay más entradas de las que admite Renta Web en un apartado.');
-  if (section('fx').length) notes.push({ title: 'Fechas de las divisas', detail: 'Renta Web pide la fecha de transmisión y la de adquisición de cada divisa (casillas 1631 y 1632). Están en el Excel, en «Transmisiones FIFO».' });
+  if (rest === grouped && section('fx').length) notes.push({ title: 'Fechas de las divisas', detail: 'Hay más de 80 cambios de moneda, así que van agrupados por divisa y sin fechas. Renta Web pide la fecha de transmisión y la de adquisición de cada uno (casillas 1631 y 1632); están en el Excel, en «Transmisiones FIFO».' });
   const prior = rep.sections.find((s) => s.id === 'prior_losses');
   const foreign = rep.doubleTax.reduce((s, x) => ({ gross: s.gross.plus(D(x.gross)), tax: s.tax.plus(D(x.deductible)) }), { gross: ZERO, tax: ZERO });
 

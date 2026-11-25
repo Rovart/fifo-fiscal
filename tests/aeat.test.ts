@@ -247,9 +247,23 @@ describe('XML de Renta: todos los apartados', () => {
         { id: 'prior_losses', entries: [], lossComputableTotal: '250.00' },
       ],
     } as unknown as YearReport;
-    const res = { incomes: [
-      { year: 2025, type: 'interest', spanishTaxEur: '9.50' }, { year: 2025, type: 'dividend', spanishTaxEur: '0' }, { year: 2024, type: 'interest', spanishTaxEur: '99' },
-    ] } as unknown as EngineResult;
+    const sale = (date: string, assetId: string, cls: string, proceeds: string, cost: string, acq: string[]) => ({
+      year: Number(date.slice(0, 4)), date, assetId, assetName: assetId, class: cls, proceedsEur: proceeds, costEur: cost,
+      gainEur: (Number(proceeds) - Number(cost)).toFixed(2), matches: acq.map((acqDate) => ({ acqDate })),
+    });
+    const res = {
+      incomes: [
+        { year: 2025, type: 'interest', spanishTaxEur: '9.50' }, { year: 2025, type: 'dividend', spanishTaxEur: '0' }, { year: 2024, type: 'interest', spanishTaxEur: '99' },
+      ],
+      disposals: [
+        // Una venta de dólares que consume dos compras: la fecha de adquisición es la más antigua.
+        sale('2025-03-10', 'FX:USD', 'fx', '110.00', '100.00', ['2025-01-05T10:00:00', '2024-12-01T10:00:00']),
+        sale('2025-06-01', 'XX', 'other', '50.00', '80.00', ['2023-02-02T09:00:00']),
+        // Sin efecto: no es una entrada.
+        sale('2025-07-01', 'FX:USD', 'fx', '20.00', '20.00', ['2025-06-01T10:00:00']),
+        sale('2024-03-10', 'FX:USD', 'fx', '10.00', '5.00', ['2024-01-01T10:00:00']),
+      ],
+    } as unknown as EngineResult;
     const declarant = { nif: '12345678Z', surnames: 'Ibáñez', firstName: 'Ana', phone: '', birthDate: '1990-12-31', sex: 'M' as const, civilStatus: '1' as const, region: '09' };
     const raw = buildRentaXml(rep, res, { ...DEFAULT_SETTINGS, declarant }).toString('latin1');
     if (process.env.RENTA_XML_FULL_OUT) writeFileSync(process.env.RENTA_XML_FULL_OUT, Buffer.from(raw, 'latin1'));
@@ -263,8 +277,9 @@ describe('XML de Renta: todos los apartados', () => {
     expect(xml).toContain('<TRANSACCION><IT>90.00</IT><IA>100.00</IA><VTX>1</VTX></TRANSACCION></G2B_A><G2B_B>100.00</G2B_B><G2B_E>10.00</G2B_E><G2B_F>0.00</G2B_F>');
     expect(xml).toContain('<FONDOCO>VANGUARD FTSE ALL-WORLD (USD) ACCUMULATI</FONDOCO><ISINCO>IE00BK5BQT80</ISINCO><VTFC1>900.00</VTFC1><VADFC1>1000.00</VADFC1><VTFCX1>1</VTFCX1>');
     expect(xml).toContain('<G2DCRIB>N</G2DCRIB>');
-    expect(xml).toContain('<ElementoPatrimonial><G2DB>4</G2DB><F2ONEROSA>1</F2ONEROSA><G2DE>110.00</G2DE><G2DF>100.00</G2DF><G2DI>10.00</G2DI>');
-    expect(xml).toContain('<G2DE>50.00</G2DE><G2DF>80.00</G2DF><G2DG>30.00</G2DG><G2DH>30.00</G2DH>');
+    expect(xml).toContain('<ElementoPatrimonial><G2DB>4</G2DB><F2ONEROSA>1</F2ONEROSA><G2DC>10/03/2025</G2DC><G2DD>01/12/2024</G2DD><G2DE>110.00</G2DE><G2DF>100.00</G2DF><G2DI>10.00</G2DI>');
+    expect(xml.split('<ElementoPatrimonial>')).toHaveLength(3);
+    expect(xml).toContain('<G2DC>01/06/2025</G2DC><G2DD>02/02/2023</G2DD><G2DE>50.00</G2DE><G2DF>80.00</G2DF><G2DG>30.00</G2DG><G2DH>30.00</G2DH>');
     expect(xml).toContain('<GPOtrasGananciasEjerAnt><GPImpPerAnt><G2D_B1>250.00</G2D_B1></GPImpPerAnt></GPOtrasGananciasEjerAnt>');
     expect(xml).toContain('<DP_APENOM_D>IBÁÑEZ, ANA</DP_APENOM_D><ECIVIL>1</ECIVIL><DPFNAC_D>31/12/1990</DPFNAC_D>');
   });
